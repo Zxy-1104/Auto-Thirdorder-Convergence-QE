@@ -1,7 +1,9 @@
 Auto-Thirdorder-Convergence-QE-Workflow 🚀
-An intelligent automation suite for High-Throughput Third-Order Force Constant Calculations.
+An intelligent automation suite for Third-Order Force Constant Calculations Convergence.
 
-This project is designed for researchers in thermal transport and phonon physics. It streamlines the complex workflow of generating supercells, calculating third-order force constants (using Quantum Espresso), and computing thermal conductivity (using ShengBTE).
+This project is designed for researchers in thermal transport and phonon physics.
+
+It streamlines the complex workflow of generating supercells, calculating third-order force constants (using Quantum Espresso), and computing thermal conductivity (using ShengBTE).
 
 By identifying rotationally and translationally equivalent supercells, this workflow significantly reduces computational cost (Core-Hours) and automates the convergence test regarding interaction cutoff distances.
 
@@ -11,7 +13,6 @@ By identifying rotationally and translationally equivalent supercells, this work
 (2) Cost Savings Analysis: Includes a dedicated script to calculate and report exact savings in Core-Hours and job counts, visualizing the efficiency of your grid.
 
 (3) Robust HPC Integration: Optimized for Slurm clusters. Uses Job Arrays for massive throughput and includes auto-correction for common QE input formatting errors (e.g., "sticky numbers" fix).
-+1
 
 (4) Automated Convergence: Automatically aggregates thermal conductivity results (Kappa) across different supercell sizes and cutoff distances to assist in convergence checks.
 
@@ -22,3 +23,60 @@ By identifying rotationally and translationally equivalent supercells, this work
 (2) ShengBTE
 (3) thirdorder.py (ShengBTE utility)
 (4) Slurm Workload Manager
+
+## ⚙️ Requirements
+
+Before running the workflow, ensure you have the following installed on your cluster:
+
+* **Python 3.x**
+    * Required libraries: `numpy`
+* **Quantum Espresso** (specifically `pw.x`)
+* **ShengBTE**
+* **thirdorder.py** (distributed with ShengBTE)
+* **Slurm Workload Manager**
+
+## 🚀 Usage Guide
+
+### 1. Configuration
+1.  **Modify Supercell Settings**:  
+    Open `scripts/generate_cells.py` and set your desired grid sizes and cutoff radii in the `configs` list:
+    ```python
+    configs = [
+        (5, 5, 5, -3),
+        (5, 5, 5, -4),
+        # Add more configurations as needed
+    ]
+    ```
+2.  **Set Paths**:  
+    Check `templates/sub_sheng.sh` and update the paths for `ShengBTE` executable and `spglib`.
+
+### 2. Execution
+Navigate to the project directory and run the main workflow script. 
+*(Note: Ensure you have your `si_unit.scf.in` base input file ready in the directory)*.
+
+bash
+# Example command (adjust based on your actual script name)
+bash templates/sub_main.sh
+This script will automatically:
+  1.Generate supercells using thirdorder.py.
+  2.Link duplicates to save storage using link_duplicates.py.
+  3.Submit Slurm job arrays for SCF calculations.
+
+3. Analysis & Results
+Check Savings:
+
+Run the analysis script to see how many core-hours you saved:
+
+Bash
+python3 scripts/analyze_savings.py
+Collect Thermal Conductivity:
+
+Once calculations are done, gather the results:
+
+Bash
+python3 scripts/collect_results.py
+
+📂 File Structure
+scripts/: Core Python logic for generation, deduplication, and analysis.
+
+templates/: Slurm submission scripts (.sh) and QE input templates.
