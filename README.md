@@ -112,7 +112,7 @@ auto-3rd plot
 To execute the entire workflow automatically in the background:
 
 ```bash
-# Run in background: keeps running after logout and saves all output (stdout & stderr) to auto.log
+# Run in background (nohup), redirect all logs to auto.log, and persist after SSH disconnect
 nohup auto-3rd auto > auto.log 2>&1 &
 
 ```
