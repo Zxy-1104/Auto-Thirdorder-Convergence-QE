@@ -1,75 +1,149 @@
-#############################################
-# 行前备战
-# 确保根目录下有pseudo(内含赝势文件)、CONTROL（ShengBTE要求）、espresso.if2（二阶力常数文件）、*_unit.scf.in（原胞自洽场计算文件）、*_supper.scf.in（超胞模板文件）； templates目录下有sub_calc.sh（超胞计算脚本）、sub_gen.sh（三阶力常数生成脚本）、sub_sheng.sh（热导率计算脚本）。
-#############################################
+# 🚀 Usage Guide
 
-#############################################
-# Auto-Thirdorder Workflow Commands
-#请确保在项目根目录下运行，且已加载 Python3 环境。
-module avail python   #查询当前环境有哪些python版本
-module load python/*  #加载想加载的python版本,*改为版本号
-python --version      #查询python版本，确保是python3
-#############################################
+## 📂 1. Preparation (Prerequisites)
 
-##############################################
-1. 初始化与生成 (Pre-processing)
-############################################## 
+Before running the workflow, ensure your project root directory contains the following files and folders:
 
-# 第一步：生成超胞文件，生成所有配置对应的文件夹及 DISP 输入文件。
+* **`pseudo/`**: Directory containing pseudopotential files (`.UPF`).
+* **`ShengBTE/`**: Directory containing:
+* `CONTROL`: ShengBTE control file.
+* `espresso.ifc2`: 2nd-order force constants file.
+
+
+* **`*_unit.scf.in`**: Unit cell self-consistent field (SCF) input file.
+* **`*_supper.scf.in`**: Supercell template file.
+* **`templates/`**: Directory containing submission scripts:
+* `sub_calc.sh` (for DFT/Supercell calculation)
+* `sub_gen.sh` (for 3rd-order FC generation)
+* `sub_sheng.sh` (for Thermal conductivity calculation)
+
+
+
+## 🛠️ 2. Environment Setup
+
+Ensure you are running in the project root directory and have **Python 3** loaded.
+
+```bash
+# Check available python versions on the cluster
+module avail python   
+
+# Load the required python version (replace * with version number, e.g., 3.8)
+module load python/* # Verify python version (Ensure it is Python 3.x)
+python --version      
+
+```
+
+---
+
+## ⚡ 3. Step-by-Step Workflow
+
+If you prefer to run the workflow stage by stage, follow these commands:
+
+### Phase 1: Pre-processing
+
+```bash
+# Step 1: Generate Supercells
+# Generates folders and DISP input files for all configurations defined in INPUT.
 python convergence.py generate
 
-# 第二步：结构去重，识别相同的原子结构，建立软链接以避免重复计算。
+# Step 2: Structure Deduplication
+# Identifies identical atomic structures and creates symlinks to avoid redundant calculations.
 python convergence.py link
 
-# (可选) 节省分析，查看去重步骤节省了多少计算资源。
+# (Optional) Cost Analysis
+# Analyze how much computational resource is saved by deduplication.
 python convergence.py analyze
 
-##############################################
-2. DFT 计算 (Quantum Espresso)
-############################################## 
+```
 
-# 第三步：提交 DFT 任务，根据 templates/sub_calc.sh 中的资源配置提交 Job Array。
+### Phase 2: DFT Calculation (Quantum Espresso)
+
+```bash
+# Step 3: Submit DFT Jobs
+# Submits Job Arrays based on resource configs in 'templates/sub_calc.sh'.
 python convergence.py submit_dft
 
-#(等待集群上的 DFT 任务全部运行完毕...)
+# ... Wait for all DFT jobs on the cluster to finish ...
 
-# 第四步：生成三阶力常数，自动检查 DFT 计算完整性，并调用 thirdorder_espresso.py reap 生成 FORCE_CONSTANTS_3RD。 如果提示 [Wait] Incomplete，请检查任务状态或重新运行未完成的任务。
+# Step 4: Generate 3rd-Order Force Constants
+# Automatically checks DFT completeness and calls 'thirdorder_espresso.py reap'.
+# If prompted [Wait] Incomplete, check job status or re-run failed tasks.
 python convergence.py gen_fc3
 
-##############################################
-3. 热导率计算 (ShengBTE)
-############################################## 
+```
 
-# 第五步：提交 ShengBTE 任务，将准备好的力常数分发到 ShengBTE/ 目录并提交计算任务。
+### Phase 3: Thermal Conductivity (ShengBTE)
+
+```bash
+# Step 5: Submit ShengBTE Jobs
+# Distributes force constants to the ShengBTE/ directory and submits calculations.
 python convergence.py run_bte
 
-#(等待集群上的 ShengBTE 任务运行完毕...)
+# ... Wait for ShengBTE jobs on the cluster to finish ...
 
-##############################################
-4. 后处理与分析 (Post-processing)
-############################################## 
+```
 
-# 第六步：收集结果，从各个任务中提取热导率数据，生成 kappa_summary.json。
+### Phase 4: Post-processing
+
+```bash
+# Step 6: Collect Results
+# Extracts thermal conductivity data from all tasks and generates 'kappa_summary.json'.
 python convergence.py collect
 
-# 第七步：绘制收敛曲线，基于收集的数据，生成 PRB 风格的收敛性对比图 (PNG 格式)。
+# Step 7: Plot Convergence Curves
+# Generates PRB-style convergence comparison plots (PNG format) based on collected data.
 python convergence.py plot
 
+```
 
-##############################################
-# 终极. 如果想一键执行上述全部任务，直接得到结果，直接输入：
-############################################## 
+---
 
-# nohup ... &: 在后台运行，且退出登录后不终止，防止任务太久SSH断掉
+## 🔥 4. One-Click Automation (Recommended)
+
+To execute the entire workflow (Phase 1 to 4) automatically in the background:
+
+### Start Automation
+
+Use `nohup` to keep the script running even if your SSH connection drops.
+
+```bash
 nohup python convergence.py auto > auto.log 2>&1 &
 
-# tail: 查询auto运行程度;
-tail -f auto.log
-# 组合键 Ctrl + C 退出查询
+```
 
-# 如果需中途停止后台任务，先查询后将*替换为PID；
+### Monitor Progress
+
+Check the automation logs in real-time. Press **`Ctrl + C`** to exit the view mode.
+
+```bash
+tail -f auto.log
+
+```
+
+### Stop Automation & Cancel Jobs
+
+If you need to stop the workflow halfway:
+
+1. **Kill the Python Script (The Controller):**
+```bash
+# Find the PID (Process ID)
 ps -ef | grep convergence.py
-kill -9 *
-# 同时取消已经提交到集群的任务，先查询后用scancel取消
-squeue -u 账号
-scancel JOBID
+
+# Kill the process (Replace <PID> with the actual number found above)
+kill -9 <PID>
+
+```
+
+
+2. **Cancel Cluster Jobs (The Calculations):**
+```bash
+# Check your running jobs
+squeue -u <your_username>
+
+# Cancel specific jobs
+scancel <JOBID>
+
+# OR Cancel ALL jobs belonging to you (Use with caution!)
+scancel -u <your_username>
+
+```
