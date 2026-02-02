@@ -33,7 +33,8 @@ You can call the main program from the parent directory or use the absolute path
 
 ```bash
 # Call convergence.py from the parent directory
-python ../convergence.py auto
+# Run in background: keeps running after logout and saves all output (stdout & stderr) to auto.log
+nohup python ../convergence.py auto > auto.log 2>&1 &
 
 # You can also add it to your environment variables
 
