@@ -1,0 +1,75 @@
+#############################################
+# 行前备战
+# 确保根目录下有pseudo(内含赝势文件)、CONTROL（ShengBTE要求）、espresso.if2（二阶力常数文件）、*_unit.scf.in（原胞自洽场计算文件）、*_supper.scf.in（超胞模板文件）； templates目录下有sub_calc.sh（超胞计算脚本）、sub_gen.sh（三阶力常数生成脚本）、sub_sheng.sh（热导率计算脚本）。
+#############################################
+
+#############################################
+# Auto-Thirdorder Workflow Commands
+#请确保在项目根目录下运行，且已加载 Python3 环境。
+module avail python   #查询当前环境有哪些python版本
+module load python/*  #加载想加载的python版本,*改为版本号
+python --version      #查询python版本，确保是python3
+#############################################
+
+##############################################
+1. 初始化与生成 (Pre-processing)
+############################################## 
+
+# 第一步：生成超胞文件，生成所有配置对应的文件夹及 DISP 输入文件。
+python convergence.py generate
+
+# 第二步：结构去重，识别相同的原子结构，建立软链接以避免重复计算。
+python convergence.py link
+
+# (可选) 节省分析，查看去重步骤节省了多少计算资源。
+python convergence.py analyze
+
+##############################################
+2. DFT 计算 (Quantum Espresso)
+############################################## 
+
+# 第三步：提交 DFT 任务，根据 templates/sub_calc.sh 中的资源配置提交 Job Array。
+python convergence.py submit_dft
+
+#(等待集群上的 DFT 任务全部运行完毕...)
+
+# 第四步：生成三阶力常数，自动检查 DFT 计算完整性，并调用 thirdorder_espresso.py reap 生成 FORCE_CONSTANTS_3RD。 如果提示 [Wait] Incomplete，请检查任务状态或重新运行未完成的任务。
+python convergence.py gen_fc3
+
+##############################################
+3. 热导率计算 (ShengBTE)
+############################################## 
+
+# 第五步：提交 ShengBTE 任务，将准备好的力常数分发到 ShengBTE/ 目录并提交计算任务。
+python convergence.py run_bte
+
+#(等待集群上的 ShengBTE 任务运行完毕...)
+
+##############################################
+4. 后处理与分析 (Post-processing)
+############################################## 
+
+# 第六步：收集结果，从各个任务中提取热导率数据，生成 kappa_summary.json。
+python convergence.py collect
+
+# 第七步：绘制收敛曲线，基于收集的数据，生成 PRB 风格的收敛性对比图 (PNG 格式)。
+python convergence.py plot
+
+
+##############################################
+# 终极. 如果想一键执行上述全部任务，直接得到结果，直接输入：
+############################################## 
+
+# nohup ... &: 在后台运行，且退出登录后不终止，防止任务太久SSH断掉
+nohup python convergence.py auto > auto.log 2>&1 &
+
+# tail: 查询auto运行程度;
+tail -f auto.log
+# 组合键 Ctrl + C 退出查询
+
+# 如果需中途停止后台任务，先查询后将*替换为PID；
+ps -ef | grep convergence.py
+kill -9 *
+# 同时取消已经提交到集群的任务，先查询后用scancel取消
+squeue -u 账号
+scancel JOBID
