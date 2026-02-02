@@ -63,7 +63,3 @@ After completion, please check if the following content has been generated in th
 * **Folders**: 5 calculation directories (e.g., `thirdorder_331_-2`, etc.).
 * **Data**: `kappa_summary.json`.
 * **Images**: Convergence curve plots in the `QE_picture/` folder.
-
-```
-
-```
