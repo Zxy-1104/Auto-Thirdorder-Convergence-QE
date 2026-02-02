@@ -13,6 +13,10 @@ This folder contains a complete test dataset for **Graphene**. This case is mere
 ### 1. Preparation
 Please ensure that the `templates/` scripts (`sub_calc.sh`, etc.) in the project **root directory** have been configured according to your cluster environment.
 
+> **⚠️ IMPORTANT:**
+> Before running the test, you **MUST** open the `INPUT` file in this `TEST/` folder and modify the `THIRDORDER_BIN` variable in the `&cell` section.
+> Change it to the **absolute path** of the `thirdorder_espresso.py` script on your system.
+
 ### 2. Enter Test Directory
 Enter this `TEST` folder in the terminal:
 
