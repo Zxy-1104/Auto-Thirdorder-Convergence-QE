@@ -108,7 +108,11 @@ def plot_convergence(config):
             if i == 0:
                 ax.set_ylabel(r'$\kappa$ (W m$^{-1}$ K$^{-1}$)')
             
-            direction_map = {'1': 'xx', '5': 'yy', '9': 'zz'}
+            direction_map = {
+            '1': 'xx', '2': 'xy', '3': 'xz',
+            '4': 'yx', '5': 'yy', '6': 'yz',
+            '7': 'zx', '8': 'zy', '9': 'zz'
+            }
             dir_label = direction_map.get(k_idx, f"Index {k_idx}")
             ax.set_title(r'$T = {:.0f}$ K, $\kappa_{{{}}}$'.format(float(temp), dir_label))
             
