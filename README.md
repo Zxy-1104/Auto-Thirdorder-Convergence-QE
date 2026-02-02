@@ -5,19 +5,16 @@
 Before running the workflow, ensure your project root directory contains the following files and folders:
 
 * **`pseudo/`**: Directory containing pseudopotential files (`.UPF`).
-* **`ShengBTE/`**: Directory containing:
-* `CONTROL`: ShengBTE control file.
-* `espresso.ifc2`: 2nd-order force constants file.
-
-
+* **`CONTROL`**: ShengBTE control file (Must be in the root directory).
+* **`espresso.ifc2`**: 2nd-order force constants file (Must be in the root directory).
 * **`*_unit.scf.in`**: Unit cell self-consistent field (SCF) input file.
 * **`*_supper.scf.in`**: Supercell template file.
 * **`templates/`**: Directory containing submission scripts:
-* `sub_calc.sh` (for DFT/Supercell calculation)
-* `sub_gen.sh` (for 3rd-order FC generation)
-* `sub_sheng.sh` (for Thermal conductivity calculation)
+  * `sub_calc.sh` (for DFT/Supercell calculation)
+  * `sub_gen.sh` (for 3rd-order FC generation)
+  * `sub_sheng.sh` (for Thermal conductivity calculation)
 
-
+*(Note: The `ShengBTE/` working directory will be automatically created by the script during Phase 3.)*
 
 ## 🛠️ 2. Environment Setup
 
@@ -76,7 +73,7 @@ python convergence.py gen_fc3
 
 ```bash
 # Step 5: Submit ShengBTE Jobs
-# Distributes force constants to the ShengBTE/ directory and submits calculations.
+# Automatically creates the 'ShengBTE/' directory, distributes force constants, and submits calculations.
 python convergence.py run_bte
 
 # ... Wait for ShengBTE jobs on the cluster to finish ...
@@ -125,6 +122,7 @@ tail -f auto.log
 If you need to stop the workflow halfway:
 
 1. **Kill the Python Script (The Controller):**
+
 ```bash
 # Find the PID (Process ID)
 ps -ef | grep convergence.py
@@ -134,8 +132,8 @@ kill -9 <PID>
 
 ```
 
-
 2. **Cancel Cluster Jobs (The Calculations):**
+
 ```bash
 # Check your running jobs
 squeue -u <your_username>
@@ -145,5 +143,9 @@ scancel <JOBID>
 
 # OR Cancel ALL jobs belonging to you (Use with caution!)
 scancel -u <your_username>
+
+```
+
+```
 
 ```
