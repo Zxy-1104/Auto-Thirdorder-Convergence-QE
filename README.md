@@ -1,24 +1,27 @@
 # 🚀 Usage Guide
 
+## ⚙️ 0. Global Configuration (One-Time Setup)
+
+Before running any calculation, go to the **source code installation directory** and configure the submission scripts in `templates/` to match your cluster environment (Partition, Queue, Module load, etc.).
+
+* `templates/sub_calc.sh`
+* `templates/sub_gen.sh`
+* `templates/sub_sheng.sh`
+
 ## 📂 1. Preparation (Prerequisites)
 
-Before running the workflow, ensure your project root directory contains the following files and folders:
+Ensure your **current working directory** (where you want to run the simulation) contains the following files:
 
 * **`pseudo/`**: Directory containing pseudopotential files (`.UPF`).
-* **`CONTROL`**: ShengBTE control file (Must be in the root directory).
-* **`espresso.ifc2`**: 2nd-order force constants file (Must be in the root directory).
+* **`CONTROL`**: ShengBTE control file.
+* **`espresso.ifc2`**: 2nd-order force constants file.
 * **`*_unit.scf.in`**: Unit cell self-consistent field (SCF) input file.
 * **`*_supper.scf.in`**: Supercell template file.
-* **`templates/`**: Directory containing submission scripts:
-  * `sub_calc.sh` (for DFT/Supercell calculation)
-  * `sub_gen.sh` (for 3rd-order FC generation)
-  * `sub_sheng.sh` (for Thermal conductivity calculation)
-
-*(Note: The `ShengBTE/` working directory will be automatically created by the script during Phase 3.)*
+* **`INPUT`**: The main configuration file.
 
 ## 🛠️ 2. Environment Setup
 
-Ensure you are running in the project root directory and have **Python 3** loaded.
+Ensure you have **Python 3** loaded in your environment.
 
 ```bash
 # Check available python versions on the cluster
@@ -57,14 +60,13 @@ python convergence.py analyze
 
 ```bash
 # Step 3: Submit DFT Jobs
-# Submits Job Arrays based on resource configs in 'templates/sub_calc.sh'.
+# Submits Job Arrays. The script automatically uses 'templates/sub_calc.sh' from the install dir.
 python convergence.py submit_dft
 
 # ... Wait for all DFT jobs on the cluster to finish ...
 
 # Step 4: Generate 3rd-Order Force Constants
 # Automatically checks DFT completeness and calls 'thirdorder_espresso.py reap'.
-# If prompted [Wait] Incomplete, check job status or re-run failed tasks.
 python convergence.py gen_fc3
 
 ```
@@ -73,7 +75,7 @@ python convergence.py gen_fc3
 
 ```bash
 # Step 5: Submit ShengBTE Jobs
-# Automatically creates the 'ShengBTE/' directory, distributes force constants, and submits calculations.
+# Automatically creates 'ShengBTE/' directory, copies CONTROL/ifc2, and submits jobs.
 python convergence.py run_bte
 
 # ... Wait for ShengBTE jobs on the cluster to finish ...
@@ -104,7 +106,8 @@ To execute the entire workflow (Phase 1 to 4) automatically in the background:
 Use `nohup` to keep the script running even if your SSH connection drops.
 
 ```bash
-nohup python convergence.py auto > auto.log 2>&1 &
+# You can run this from anywhere using the absolute path or alias
+nohup python /path/to/convergence.py auto > auto.log 2>&1 &
 
 ```
 
