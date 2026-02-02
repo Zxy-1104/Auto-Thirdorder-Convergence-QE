@@ -1,149 +1,1323 @@
-# 🚀 Usage Guide
-
-## 📂 1. Preparation (Prerequisites)
-
-Before running the workflow, ensure your project root directory contains the following files and folders:
-
-* **`pseudo/`**: Directory containing pseudopotential files (`.UPF`).
-* **`ShengBTE/`**: Directory containing:
-* `CONTROL`: ShengBTE control file.
-* `espresso.ifc2`: 2nd-order force constants file.
+*_unit.scf.in Quantum Espresso生成二阶力常数文件的自洽场计算文件，具体参考https://www.quantum-espresso.org/
+*_supper.scf.in 超胞的模板文件，具体参考https://bitbucket.org/sousaw/thirdorder
+ShengBTE/CONTROL  ShengBTE计算热导率的控制脚本，对应espresso.ifc2，具体参考https://bitbucket.org/sousaw/shengbte
+ShengBTE/espresso.ifc2  二阶力常数文件，通过QE中pw.x\ph.x\q2r.x计算生成的*.fc文件改名，具体参考https://bitbucket.org/sousaw/shengbte
+pseudo/*.UPF 赝势文件，可以通过多种途径下载，注意二、三阶力常数用的赝势文件需统一
+sub_calc.sh 计算提交脚本，根据自己的超算修改集群配置
+INPUT 流程信息，通过此脚本指定超胞大小、截断距离等信息
 
 
-* **`*_unit.scf.in`**: Unit cell self-consistent field (SCF) input file.
-* **`*_supper.scf.in`**: Supercell template file.
-* **`templates/`**: Directory containing submission scripts:
-* `sub_calc.sh` (for DFT/Supercell calculation)
-* `sub_gen.sh` (for 3rd-order FC generation)
-* `sub_sheng.sh` (for Thermal conductivity calculation)
+######################################
+#指定信息
+######################################
+INPUT文件：
+# =================================================================
+# 1. Generate & Link Settings
+# =================================================================
+&cell
+# 格式: (na, nb, nc, cutoff)
+configs = [
+    (3, 3, 3, -2),
+    (3, 3, 3, -3),
+    (4, 4, 4, -3),
+    (4, 4, 4, -4),
+    (5, 5, 5, -3),
+    (5, 5, 5, -4),
+]
+base_input = "si_unit.scf.in"
+template_supercell_name = "si_supper.scf.in"
+
+# =================================================================
+# 2. DFT Calculation Settings (Quantum Espresso)
+# =================================================================
+&dft
+# [新增] 这里控制 sub_calc.sh 的提交逻辑
+# 每个作业数组任务处理多少个文件？
+FILES_PER_JOB = 5
+
+# QE 计算脚本模板
+SUB_SCRIPT = "templates/sub_calc.sh"
+
+# =================================================================
+# 3. Analysis Settings
+# =================================================================
+&analyze
+# 估算每个任务的计算成本 (核心小时/任务)，用于 analyze 报告
+COST_ESTIMATES = {
+    "333": 50,
+    "444": 150,
+    "555": 400,
+}
+
+# =================================================================
+# 4. ShengBTE Submission Settings
+# =================================================================
+&submit
+ROOT_DIR = "."
+WORK_DIR = "ShengBTE"
+CONTROL_FILE = "CONTROL"
+IFC2_FILE = "espresso.ifc2"
+# ShengBTE 提交脚本模板
+SUB_SCRIPT = "templates/sub_sheng.sh"
+TARGET_RESULT = "BTE.KappaTensorVsT_CONV"
+
+# =================================================================
+# 5. Result Collection & Plotting Settings
+# =================================================================
+&collect
+# 支持多温度，用引号和逗号分隔
+TEMPERATURE = "300, 400, 500" 
+
+# 目标文件名
+TARGET_FILE = "BTE.KappaTensorVsT_CONV"
+
+# 提取哪些方向的热导率？(1=xx, 5=yy, 9=zz)
+TARGET_KAPPA = "1, 5, 9"
+
+# 结果保存位置
+OUTPUT_JSON = "kappa_summary.json"
+
+# [可选] 显式指定目录，不写的话代码会自动去 &submit 里找
+WORK_DIR = "ShengBTE"
+ROOT_DIR = "."
+
+
+######################################
+#读取超胞INPUT文件并分配信息
+######################################
+
+import sys
+
+class ConfigParser:
+    def __init__(self, input_file):
+        # 初始化存放配置的字典
+        self.config = {
+            'cell': {},
+            'analyze': {},
+            'submit': {},
+            'collect': {}
+        }
+        self._parse(input_file)
+
+    def _parse(self, filename):
+        try:
+            with open(filename, 'r') as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            # 修改提示信息为 INPUT
+            print(f"Error: INPUT file '{filename}' not found.")
+            sys.exit(1)
+
+        current_section = None
+        # 使用字典暂存每个板块的“源代码字符串”
+        # 结构示例: {'cell': "configs = [...]\nbase_input='...'", 'analyze': "..."}
+        section_code_blocks = {}
+
+        # === 第一步：按 Section 归类文本 ===
+        for line in lines:
+            line = line.strip()
+            # 跳过空行和纯注释行
+            if not line or line.startswith('#'): continue
+            
+            # 识别 Section (e.g., &cell)
+            if line.startswith('&'):
+                current_section = line[1:].lower() # 去掉 &, 转小写
+                if current_section not in section_code_blocks:
+                    section_code_blocks[current_section] = ""
+            elif current_section:
+                # 关键修改：不要立即执行，而是把代码行拼接到当前板块的缓存中
+                # 加上换行符保持原有结构
+                section_code_blocks[current_section] += line + "\n"
+
+        # === 第二步：整块执行代码 ===
+        for section, code_block in section_code_blocks.items():
+            # 如果是新出现的 Section，初始化它
+            if section not in self.config:
+                self.config[section] = {}
+
+            local_scope = {}
+            try:
+                # 关键修改：exec 执行整个代码块，完美支持多行列表/字典
+                exec(code_block, {}, local_scope)
+                
+                # 将执行结果存入 config
+                for key, value in local_scope.items():
+                    # 过滤掉 Python 内置变量（如果有的话）
+                    if not key.startswith('__'):
+                        self.config[section][key] = value
+                        
+            except Exception as e:
+                print(f"Warning: Failed to parse section '&{section}'\nError: {e}")
+
+    def get(self, section, key, default=None):
+        return self.config.get(section, {}).get(key, default)
 
 
 
-## 🛠️ 2. Environment Setup
+######################################
+#生成超胞
+######################################
 
-Ensure you are running in the project root directory and have **Python 3** loaded.
+import os
+import subprocess
+import shutil
+import sys
 
-```bash
-# Check available python versions on the cluster
-module avail python   
+def run_command(cmd, work_dir):
+    try:
+        # 在指定目录 work_dir 下执行命令
+        subprocess.check_call(cmd, shell=True, cwd=work_dir, stdout=subprocess.DEVNULL)
+    except subprocess.CalledProcessError as e:
+        sys.stderr.write(f"Error running command in {work_dir}: {cmd}\n")
+        sys.exit(1)
 
-# Load the required python version (replace * with version number, e.g., 3.8)
-module load python/* # Verify python version (Ensure it is Python 3.x)
-python --version      
+def run_generation(configs, base_input, template_supercell_name):
+    # 1. 基础检查
+    if not os.path.exists(base_input):
+        print(f"Error: Base input file '{base_input}' not found.")
+        return []
+    
+    # 检查模板文件是否存在（如果它被指定了的话）
+    if template_supercell_name and not os.path.exists(template_supercell_name):
+        print(f"Error: Template file '{template_supercell_name}' not found.")
+        return []
 
-```
+    generated_folders = []
+    print(f"--- Starting Supercell Generation (In-place Mode) ---")
 
----
+    for na, nb, nc, cut in configs:
+        folder_name = f"thirdorder_{na}{nb}{nc}_{cut}"
+        generated_folders.append(folder_name)
+        
+        if os.path.exists(folder_name):
+             print(f"  [Skip] Folder '{folder_name}' already exists.")
+             continue
 
-## ⚡ 3. Step-by-Step Workflow
-
-If you prefer to run the workflow stage by stage, follow these commands:
-
-### Phase 1: Pre-processing
-
-```bash
-# Step 1: Generate Supercells
-# Generates folders and DISP input files for all configurations defined in INPUT.
-python convergence.py generate
-
-# Step 2: Structure Deduplication
-# Identifies identical atomic structures and creates symlinks to avoid redundant calculations.
-python convergence.py link
-
-# (Optional) Cost Analysis
-# Analyze how much computational resource is saved by deduplication.
-python convergence.py analyze
-
-```
-
-### Phase 2: DFT Calculation (Quantum Espresso)
-
-```bash
-# Step 3: Submit DFT Jobs
-# Submits Job Arrays based on resource configs in 'templates/sub_calc.sh'.
-python convergence.py submit_dft
-
-# ... Wait for all DFT jobs on the cluster to finish ...
-
-# Step 4: Generate 3rd-Order Force Constants
-# Automatically checks DFT completeness and calls 'thirdorder_espresso.py reap'.
-# If prompted [Wait] Incomplete, check job status or re-run failed tasks.
-python convergence.py gen_fc3
-
-```
-
-### Phase 3: Thermal Conductivity (ShengBTE)
-
-```bash
-# Step 5: Submit ShengBTE Jobs
-# Distributes force constants to the ShengBTE/ directory and submits calculations.
-python convergence.py run_bte
-
-# ... Wait for ShengBTE jobs on the cluster to finish ...
-
-```
-
-### Phase 4: Post-processing
-
-```bash
-# Step 6: Collect Results
-# Extracts thermal conductivity data from all tasks and generates 'kappa_summary.json'.
-python convergence.py collect
-
-# Step 7: Plot Convergence Curves
-# Generates PRB-style convergence comparison plots (PNG format) based on collected data.
-python convergence.py plot
-
-```
-
----
-
-## 🔥 4. One-Click Automation (Recommended)
-
-To execute the entire workflow (Phase 1 to 4) automatically in the background:
-
-### Start Automation
-
-Use `nohup` to keep the script running even if your SSH connection drops.
-
-```bash
-nohup python convergence.py auto > auto.log 2>&1 &
-
-```
-
-### Monitor Progress
-
-Check the automation logs in real-time. Press **`Ctrl + C`** to exit the view mode.
-
-```bash
-tail -f auto.log
-
-```
-
-### Stop Automation & Cancel Jobs
-
-If you need to stop the workflow halfway:
-
-1. **Kill the Python Script (The Controller):**
-```bash
-# Find the PID (Process ID)
-ps -ef | grep convergence.py
-
-# Kill the process (Replace <PID> with the actual number found above)
-kill -9 <PID>
-
-```
+        print(f"  [Gen] Generating {folder_name} (Grid: {na}x{nb}x{nc}, Cut: {cut})...")
+        
+        # 创建目录
+        os.makedirs(folder_name)
+        
+        # 2. 【核心修复】复制必要文件到子目录
+        # 必须把原胞文件和超胞模板都复制进去，脚本在里面运行才能找到它们
+        shutil.copy(base_input, os.path.join(folder_name, base_input))
+        shutil.copy(template_supercell_name, os.path.join(folder_name, template_supercell_name))
+        
+        # 3. 构造命令
+        cmd = f"thirdorder_espresso.py {base_input} sow {na} {nb} {nc} {cut} {template_supercell_name}"
+        
+        # 4. 在子目录内运行
+        run_command(cmd, work_dir=folder_name)
+        
+    print(f"--- Generation Complete. {len(generated_folders)} folders processed. ---")
+    return generated_folders
 
 
-2. **Cancel Cluster Jobs (The Calculations):**
-```bash
-# Check your running jobs
-squeue -u <your_username>
+######################################
+#去重，生成链接
+######################################
 
-# Cancel specific jobs
-scancel <JOBID>
+import os
+import glob
+import sys
 
-# OR Cancel ALL jobs belonging to you (Use with caution!)
-scancel -u <your_username>
+# 定义生成的链接报告文件名
+LOG_FILE = "linking_report.txt"
 
-```
+def parse_structure(filepath):
+    """
+    解析 Quantum Espresso 输入文件，提取原子结构信息作为“指纹”。
+    
+    设计思路：
+    我们不尝试将坐标解析为浮点数，而是直接读取并存储整行字符串。
+    原因：QE 输入文件中有时会出现数字粘连（如 '0.000-0.123'），
+    如果尝试用 split() 分割会报错。直接比对字符串既能避开格式问题，
+    又能保证只有当坐标完全一致（包括精度）时才判定为重复。
+    
+    Args:
+        filepath (str): 输入文件路径
+        
+    Returns:
+        tuple: (原子数 nat, 坐标行列表 positions)
+    """
+    nat = None
+    positions = []
+    in_positions = False # 状态标记：是否正在读取 ATOMIC_POSITIONS 板块
+    
+    try:
+        with open(filepath, 'r') as f:
+            lines = f.readlines()     
+            
+        for line in lines:
+            strip_line = line.strip()
+            if not strip_line: continue # 跳过空行
+
+            # 1. 提取原子总数 (nat)
+            # 典型格式: nat = 2, ibrav = ...
+            if "nat" in line and "=" in line:
+                parts = line.split('=')
+                try:
+                    # 获取等号后的数字部分
+                    nat_str = parts[1].split(',')[0].strip()
+                    nat = int(nat_str)
+                except ValueError: pass
+            
+            # 2. 检测坐标板块开始
+            if "ATOMIC_POSITIONS" in line:
+                in_positions = True
+                continue
+            
+            # 3. 读取具体的原子坐标行
+            if in_positions:
+                # 如果遇到了下一个控制卡（如 K_POINTS 或 CELL_PARAMETERS），说明坐标部分结束
+                if "K_POINTS" in line or "CELL_PARAMETERS" in line:
+                    break
+                
+                # 只有在已经获取到 nat 的情况下才收集数据
+                if nat is not None:
+                    positions.append(strip_line)
+                    # 如果收集到的行数达到了原子数，说明读取完毕，提前退出循环
+                    if len(positions) >= nat:
+                        break
+    except Exception:
+        # 如果文件损坏或格式严重错误，返回空以示跳过
+        return None, None
+        
+    return nat, positions
+
+def create_symlink(src, dst, log_handle):
+    """
+    建立软链接：让 dst 指向 src。
+    
+    Args:
+        src (str): 源文件路径 (已存在的计算结果)
+        dst (str): 目标文件路径 (将要创建的链接)
+        log_handle (file object): 用于写入日志的文件句柄
+    """
+    # 使用绝对路径：防止因相对路径层级不同导致链接失效
+    abs_src = os.path.abspath(src)
+    abs_dst = os.path.abspath(dst)
+    
+    # 安全检查：如果目标位置已经存在文件或链接，先删除它
+    # 否则 os.symlink 会报错 "File exists"
+    if os.path.islink(abs_dst) or os.path.exists(abs_dst):
+        os.remove(abs_dst)
+        
+    # 创建软链接
+    os.symlink(abs_src, abs_dst)
+    
+    # [关键记录]：记录完整的路径映射，方便用户在 report 中排查
+    # 格式: path/to/target -> path/to/source
+    log_handle.write(f"{dst} -> {src}\n")
+
+def run_linking(configs):
+    """
+    去重逻辑主入口。
+    
+    原理：
+    遍历所有文件夹下的所有输入文件，解析其结构。
+    维护一个数据库 (structure_db)，记录每种结构“第一次”出现时的对应输出文件。
+    如果后续遇到相同的结构，不再计算，直接链接到第一次的输出文件。
+    """
+    # 1. 根据配置构建文件夹列表
+    target_folders = []
+    for na, nb, nc, cut in configs:
+        target_folders.append(f"thirdorder_{na}{nb}{nc}_{cut}")
+
+    # 数据库结构: 
+    # Key = (原子数, (坐标行1, 坐标行2, ...)) -> 这是唯一的结构指纹
+    # Value = 对应的输出文件路径 (.out)
+    structure_db = {}
+    total_linked = 0
+    
+    print(f"--- Starting Structure Deduplication ---")
+    
+    # 打开日志文件准备记录
+    with open(LOG_FILE, 'w') as log:
+        log.write("=== Thirdorder Duplication Linking Report ===\n")
+        log.write("Format: [Target File (Skipped)] -> [Source File (Used)]\n\n")
+        
+        for folder in target_folders:
+            # 如果某个截断距离的文件夹没生成，直接跳过
+            if not os.path.exists(folder):
+                continue
+                
+            print(f"  Processing: {folder} ... ", end='', flush=True)
+            
+            # [重要] 对文件进行排序
+            # glob 返回的文件顺序是不确定的。排序确保我们总是先处理编号小的文件（如 .in.1, .in.2），
+            # 让它们成为“源文件”，后续文件链接向它们。这保证了运行的一致性。
+            input_files = sorted([f for f in glob.glob(os.path.join(folder, "DISP.*")) if not f.endswith(".out")])
+            folder_link_count = 0
+            
+            for infile in input_files:
+                # 解析当前文件的结构
+                nat, positions = parse_structure(infile)
+                
+                # 校验数据完整性
+                if nat is None or not positions or len(positions) != nat:
+                    continue
+                
+                # 构建指纹 Key（元组是可哈希的，可以作为字典 Key）
+                struct_key = (nat, tuple(positions))
+                outfile = infile + ".out"
+                
+                # === 查重核心逻辑 ===
+                if struct_key in structure_db:
+                    # 情况 A: 结构已存在
+                    # 获取之前那个文件的输出路径
+                    existing_outfile = structure_db[struct_key]
+                    
+                    # 建立链接：当前 outfile -> 指向 existing_outfile
+                    create_symlink(existing_outfile, outfile, log)
+                    
+                    total_linked += 1
+                    folder_link_count += 1
+                else:
+                    # 情况 B: 这是一个新结构
+                    # 将其注册到数据库中，作为未来重复结构的“源”
+                    structure_db[struct_key] = outfile
+
+            print(f"Done. (Linked: {folder_link_count})")
+
+    print(f"--- Deduplication Complete. Total linked: {total_linked}. See {LOG_FILE}. ---")
+
+# =============================================================================
+# 独立运行支持模块
+# 允许用户直接运行 `python src/deduplicator.py` 来测试或手动执行去重
+# =============================================================================
+if __name__ == "__main__":
+    # 动态调整 Python 搜索路径，以便能导入同级目录下的模块
+    # 将当前脚本的上两级目录（项目根目录）加入 path
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    try:
+        from src.io_utils import ConfigParser
+    except ImportError:
+        print("Error: Could not import ConfigParser. Please run from project root.")
+        sys.exit(1)
+        
+    # 默认读取根目录下的 INPUT 文件
+    config_path = "INPUT"
+    # 如果用户通过命令行提供了参数，则使用用户指定的文件
+    if len(sys.argv) > 1:
+        config_path = sys.argv[1]
+        
+    if not os.path.exists(config_path):
+        print(f"Error: Config file '{config_path}' not found.")
+        sys.exit(1)
+        
+    # 解析 INPUT 文件获取 configs
+    parser = ConfigParser(config_path)
+    configs = parser.get('cell', 'configs')
+    
+    if not configs:
+        print("Error: No 'configs' found in INPUT file.")
+        sys.exit(1)
+        
+    # 执行主逻辑
+    run_linking(configs)
+
+
+######################################
+#分析结果
+######################################
+
+import os
+import glob
+import re
+import sys
+from collections import defaultdict
+
+# 定义输出文件名 (与 deduplicator.py 保持一致)
+LOG_FILE = "linking_report.txt"
+
+def get_folder_stats(folder_path):
+    """
+    统计指定文件夹内的任务情况。
+    返回: (总文件数, 软链接数)
+    """
+    # 获取所有的输出文件 (.out)
+    # 注意：我们的逻辑是只要 .out 是链接，就算节省了
+    out_files = glob.glob(os.path.join(folder_path, "DISP.*.out"))
+    
+    total = len(out_files)
+    linked = 0
+    
+    for f in out_files:
+        # os.path.islink 检测是否为软链接
+        if os.path.islink(f):
+            linked += 1
+            
+    return total, linked
+
+def run_analysis(cost_estimates):
+    """
+    执行成本分析并将结果追加到日志文件。
+    
+    Args:
+        cost_estimates (dict): 从 INPUT 文件读取的成本字典 {'333': 50, ...}
+    """
+    print(f"--- Starting Cost Analysis ---")
+    
+    # 扫描当前目录下所有的 thirdorder 文件夹
+    # 正则匹配: thirdorder_333_-2
+    pattern = re.compile(r"thirdorder_(\d{3})_(-?\d+)")
+    folders = sorted(glob.glob("thirdorder_*"))
+    
+    # 数据结构用于汇总: data[supercell_size] = [(cutoff, total, saved), ...]
+    data = defaultdict(list)
+    
+    for folder in folders:
+        match = pattern.match(folder)
+        if not match: continue
+        
+        sc_str = match.group(1) # e.g. "333"
+        cut_str = match.group(2) # e.g. "-2"
+        
+        total, saved = get_folder_stats(folder)
+        
+        # 即使 total 为 0 也记录，防止漏掉空文件夹的信息
+        data[sc_str].append({
+            'cut': cut_str,
+            'total': total,
+            'saved': saved
+        })
+
+    # === 将结果追加写入文件 ===
+    # mode='a' 表示 append (追加模式)，不会覆盖原有内容
+    with open(LOG_FILE, 'a') as f:
+        f.write("\n" + "="*85 + "\n")
+        f.write("COMPUTATIONAL COST SAVINGS ANALYSIS\n")
+        f.write("="*85 + "\n")
+        
+        grand_total_jobs = 0
+        grand_total_saved_jobs = 0
+        grand_total_saved_hours = 0.0
+
+        # 按超胞尺寸分组输出 (333, 444, 555...)
+        for sc in sorted(data.keys()):
+            # 获取该尺寸的单任务成本
+            if sc not in cost_estimates:
+                f.write(f"\n[WARNING] No cost estimate found for Supercell {sc}. Skipping cost calculation.\n")
+                unit_cost = 0
+            else:
+                unit_cost = cost_estimates[sc]
+
+            f.write(f"\nSupercell {sc} (Est. Cost: {unit_cost} Core-Hours/Job)\n")
+            f.write(f"{'-'*85}\n")
+            f.write(f"{'Cutoff':<10} | {'Total Jobs':<12} | {'Linked(Saved)':<15} | {'Actual Run':<12} | {'Savings %':<10}\n")
+            f.write(f"{'-'*85}\n")
+
+            sc_total_jobs = 0
+            sc_total_saved = 0
+            
+            # 对该尺寸下的不同截断距离进行排序输出
+            #按截断距离绝对值排序，看着更顺眼 (-2, -3, -4...)
+            entries = sorted(data[sc], key=lambda x: abs(int(x['cut'])))
+
+            for entry in entries:
+                cut = entry['cut']
+                t = entry['total']
+                s = entry['saved']
+                a = t - s # 实际运行数
+                
+                pct = (s / t * 100) if t > 0 else 0.0
+                
+                f.write(f"{cut:<10} | {t:<12} | {s:<15} | {a:<12} | {pct:8.1f}%\n")
+                
+                sc_total_jobs += t
+                sc_total_saved += s
+            
+            # 计算该尺寸的总节省
+            sc_pct = (sc_total_saved / sc_total_jobs * 100) if sc_total_jobs > 0 else 0.0
+            saved_hours = sc_total_saved * unit_cost
+            
+            grand_total_saved_hours += saved_hours
+            grand_total_jobs += sc_total_jobs
+            grand_total_saved_jobs += sc_total_saved
+            
+            f.write(f"{'-'*85}\n")
+            f.write(f"SUBTOTAL {sc}:\n")
+            f.write(f"  - Jobs Saved: {sc_total_saved}/{sc_total_jobs} ({sc_pct:.1f}%)\n")
+            f.write(f"  - Hours Saved: {saved_hours:,.1f} Core-Hours\n")
+            f.write(f"{'='*85}\n")
+
+        # 全局汇总
+        total_pct = (grand_total_saved_jobs / grand_total_jobs * 100) if grand_total_jobs > 0 else 0.0
+        f.write(f"\nFINAL REPORT:\n")
+        f.write(f"  Total Files Checked : {grand_total_jobs}\n")
+        f.write(f"  Total Skipped (Link): {grand_total_saved_jobs}\n")
+        f.write(f"  Overall Savings (%) : {total_pct:.1f}%\n")
+        f.write(f"  TOTAL COMPUTING SAVED : {grand_total_saved_hours:,.1f} Core-Hours\n")
+        f.write(f"{'='*85}\n")
+
+    print(f"--- Analysis Complete. Results appended to {LOG_FILE}. ---")
+
+# =============================================================================
+# 独立运行支持
+# =============================================================================
+if __name__ == "__main__":
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        from src.io_utils import ConfigParser
+    except ImportError:
+        print("Error: Could not import ConfigParser.")
+        sys.exit(1)
+        
+    config_path = "INPUT"
+    if len(sys.argv) > 1:
+        config_path = sys.argv[1]
+        
+    if not os.path.exists(config_path):
+        print(f"Error: Config file '{config_path}' not found.")
+        sys.exit(1)
+        
+    parser = ConfigParser(config_path)
+    costs = parser.get('analyze', 'COST_ESTIMATES')
+    
+    if not costs:
+        print("Error: 'COST_ESTIMATES' not found in INPUT.")
+        sys.exit(1)
+        
+    run_analysis(costs)
+
+
+########################################
+#QE计算提交脚本
+########################################
+
+#!/bin/bash
+#SBATCH -p v6_384
+#SBATCH -N 1
+#SBATCH -n 96
+#SBATCH -o %A_%a.out
+#SBATCH -e %A_%a.err
+#SBATCH --array=1-2    # <--- [关键] 这里指定你要用几个任务(节点)来跑这个文件夹
+
+# ================= 配置区域 (User Config) =================
+# [1] 并行分块数
+# 必须与上面的 --array 上限保持一致！
+NUM_CHUNKS=2
+
+# [2] 计算资源参数
+MY_NPROC=96     # 总核数
+MY_NPOOL=4      # QE npool 参数
+
+# [3] 环境加载
+source /public1/soft/modules/module.sh
+module purge
+module load qe/6.7.0-oneAPI.2022.1
+# ========================================================
+
+echo "=== Job Array ID: $SLURM_ARRAY_TASK_ID / $NUM_CHUNKS ==="
+echo "Work Dir: $(pwd)"
+
+files=($(ls DISP.*.in.* | grep -v ".out" | sort -V))
+total_files=${#files[@]}
+
+echo "Total files found: $total_files"
+
+if [ $total_files -eq 0 ]; then
+    echo "No files to process. Exiting."
+    exit 0
+fi
+
+chunk_size=$(( (total_files + NUM_CHUNKS - 1) / NUM_CHUNKS ))
+start_idx=$(( (SLURM_ARRAY_TASK_ID - 1) * chunk_size ))
+my_batch=("${files[@]:$start_idx:$chunk_size}")
+
+echo "Chunk Size: $chunk_size"
+echo "Processing Range: Index $start_idx to $((start_idx + ${#my_batch[@]} - 1))"
+echo "Files in this batch: ${#my_batch[@]}"
+
+if [ ${#my_batch[@]} -eq 0 ]; then
+    echo "No files assigned to this chunk. Task Done."
+    exit 0
+fi
+
+for input in "${my_batch[@]}"; do
+    output="${input}.out"
+
+    if [ -L "$input" ] || [ -L "$output" ]; then
+        echo "Skip Symlink: $input"
+        continue
+    fi
+
+    if [ -f "$output" ] && grep -q "JOB DONE" "$output"; then
+        echo "Skip Completed: $output"
+        continue
+    fi
+
+    file_num=$(echo "$input" | awk -F'.' '{print $NF}')
+    target_outdir="$(pwd)/outdir/job_${file_num}"
+    mkdir -p "$target_outdir"
+
+    sed -i -E 's/([0-9])(-[0-9])/\1 \2/g' "$input"
+    sed -i "s|outdir.*=.*|outdir = '${target_outdir}'|g" "$input"
+
+    echo ">>> Running: $input"
+    mpirun -np $MY_NPROC pw.x -npool $MY_NPOOL -input "$input" > "$output"
+
+    rm -rf "$target_outdir"
+done
+
+echo "=== Batch Complete ==="
+
+
+############################################
+#shengBTE计算脚本
+############################################
+
+#!/bin/bash
+#SBATCH -p v6_384
+#SBATCH -N 1
+#SBATCH -n 96
+#SBATCH -o job.out
+#SBATCH -J shengBTE
+
+# ================= 配置区域 (User Config) =================
+# [1] 计算资源
+MY_NPROC=96  # 使用的核数 (需与 #SBATCH -n 一致)
+
+# [2] 软件路径 (请修改为你自己的真实路径)
+# Spglib 库路径 (ShengBTE 依赖)
+SPGLIB_LIB_DIR="$HOME/soft/spglib-1.9.9/lib"
+
+# ShengBTE 可执行文件路径
+SHENGBTE_EXE="$HOME/soft/sousaw-shengbte-b0d209068239/ShengBTE"
+
+# [3] 环境加载
+source /public1/soft/modules/module.sh
+module purge
+# 加载 MPI 环境 (ShengBTE 需要 MPI)
+module load qe/6.7.0-oneAPI.2022.1 
+# ========================================================
+
+echo "=== Job Started at $(date) ==="
+echo "Work Dir: $(pwd)"
+
+export LD_LIBRARY_PATH=${SPGLIB_LIB_DIR}:${LD_LIBRARY_PATH}
+
+if [ ! -f "$SHENGBTE_EXE" ]; then
+    echo "Error: ShengBTE executable not found at $SHENGBTE_EXE"
+    exit 1
+fi
+
+REQUIRED_FILES=("CONTROL" "espresso.ifc2" "FORCE_CONSTANTS_3RD")
+for file in "${REQUIRED_FILES[@]}"; do
+    if [ ! -f "$file" ] && [ ! -L "$file" ]; then
+        echo "Error: Missing input file '$file'"
+        exit 1
+    fi
+done
+
+echo "Starting ShengBTE calculation..."
+
+# 直接运行，输出自动流向 job.out
+mpirun -np $MY_NPROC "$SHENGBTE_EXE"
+
+if [ $? -eq 0 ]; then
+    echo "Job Done Successfully at $(date)."
+else
+    echo "Job Failed at $(date)."
+    exit 1
+fi
+
+
+############################################
+#提交shengBTE任务
+############################################
+
+import os
+import glob
+import re
+import shutil
+import subprocess
+import sys
+
+def submit_jobs(config):
+    """
+    ShengBTE 任务提交流程
+    Args:
+        config (dict): 从 INPUT 文件解析出的 &submit 字典
+    """
+    # 1. 读取配置
+    root_dir = config.get('ROOT_DIR', '.')
+    work_dir = config.get('WORK_DIR', 'ShengBTE') # 默认放在 ShengBTE 文件夹
+    control_file = config.get('CONTROL_FILE', 'CONTROL')
+    ifc2_file = config.get('IFC2_FILE', 'espresso.ifc2')
+    sub_script_tpl = config.get('SUB_SCRIPT', 'templates/sub_sheng.sh')
+    target_result = config.get('TARGET_RESULT', 'BTE.KappaTensorVsT_CONV')
+
+    # 2. 基础检查
+    # 检查必须的文件是否存在于根目录
+    required_files = [control_file, ifc2_file, sub_script_tpl]
+    for f in required_files:
+        if not os.path.exists(f):
+            print(f"Error: Required file '{f}' not found in root directory.")
+            return
+
+    # 创建统一的工作目录 (ShengBTE/)
+    if not os.path.exists(work_dir):
+        os.makedirs(work_dir)
+        print(f"Created working directory: {work_dir}")
+
+    # 3. 扫描 force constants 文件夹
+    # 匹配模式: thirdorder_333_-2
+    pattern = re.compile(r"thirdorder_(\d{3})_(-?\d+)")
+    source_folders = sorted(glob.glob(os.path.join(root_dir, "thirdorder_*")))
+    
+    print(f"--- Starting ShengBTE Submission ---")
+    print(f"Found {len(source_folders)} candidate folders.")
+
+    skipped_count = 0
+    submitted_count = 0
+
+    for src_folder in source_folders:
+        folder_name = os.path.basename(src_folder)
+        match = pattern.match(folder_name)
+        if not match: continue
+
+        sc_size = match.group(1) # 555
+        cutoff = match.group(2)  # -5
+        
+        # 检查该超胞下是否有三阶力常数文件
+        fc3_path = os.path.join(src_folder, "FORCE_CONSTANTS_3RD")
+        if not os.path.exists(fc3_path):
+            # 如果没有 FC3 文件，说明 DFT 还没算完，跳过
+            continue
+
+        # 定义任务路径: ShengBTE/task_555_-5
+        task_folder_name = f"task_{sc_size}_{cutoff}"
+        task_dir = os.path.join(work_dir, task_folder_name)
+        
+        # 检查结果是否已存在 (断点续算)
+        result_path = os.path.join(task_dir, target_result)
+        if os.path.exists(result_path) and os.path.getsize(result_path) > 0:
+            print(f"  [Skip] {task_folder_name}: Result exists.")
+            skipped_count += 1
+            continue
+
+        # === 创建任务环境 ===
+        if not os.path.exists(task_dir):
+            os.makedirs(task_dir)
+
+        # 这里的关键是：使用 abspath 获取绝对路径
+        # 这样无论我们在哪里创建软链接，只要指向绝对路径，就不会断链
+        abs_control = os.path.abspath(control_file)
+        abs_ifc2 = os.path.abspath(ifc2_file)
+        abs_fc3 = os.path.abspath(fc3_path)
+        abs_sub_script = os.path.abspath(sub_script_tpl)
+
+        # A. 复制 CONTROL (因为它小，而且可能需要微调，复制比链接好)
+        shutil.copy(abs_control, os.path.join(task_dir, "CONTROL"))
+        
+        # B. 链接 espresso.ifc2
+        dest_ifc2 = os.path.join(task_dir, "espresso.ifc2")
+        if not os.path.exists(dest_ifc2):
+            os.symlink(abs_ifc2, dest_ifc2)
+            
+        # C. 链接 FORCE_CONSTANTS_3RD
+        dest_fc3 = os.path.join(task_dir, "FORCE_CONSTANTS_3RD")
+        if os.path.exists(dest_fc3) or os.path.islink(dest_fc3):
+            os.remove(dest_fc3)
+        os.symlink(abs_fc3, dest_fc3)
+        
+        # D. 复制提交脚本 (确保脚本里的名字是 sub_sheng.sh)
+        dest_script_name = os.path.basename(sub_script_tpl) # 拿到 sub_sheng.sh
+        shutil.copy(abs_sub_script, os.path.join(task_dir, dest_script_name))
+
+        # === 提交任务 ===
+        # 记录当前目录，进到任务目录提交，再退回来
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(task_dir)
+            
+            job_name = f"K_{sc_size}_{cutoff}"
+            print(f"  [Sub] Submitting {task_folder_name} ...")
+            
+            # 使用 sbatch 提交
+            # -J 指定作业名
+            cmd = f"sbatch -J {job_name} {dest_script_name}"
+            
+            ret = subprocess.call(cmd, shell=True, stdout=subprocess.DEVNULL)
+            if ret == 0:
+                submitted_count += 1
+            else:
+                print(f"    Error: Submission failed for {task_folder_name}")
+                
+        except Exception as e:
+            print(f"    Error in {task_folder_name}: {e}")
+        finally:
+            os.chdir(original_cwd)
+
+    print(f"\n--- Submission Summary ---")
+    print(f"  Skipped (Done) : {skipped_count}")
+    print(f"  Submitted      : {submitted_count}")
+
+
+
+############################################
+#收集结果
+############################################
+
+import os
+import glob
+import re
+import json
+import numpy as np
+from collections import defaultdict
+
+def get_kappa_vector(filepath, target_temp, target_indices):
+    """
+    从 ShengBTE 结果文件中提取特定温度下的多个热导率分量。
+    
+    Args:
+        filepath (str): BTE.KappaTensorVsT_CONV 文件路径
+        target_temp (float): 目标温度 (e.g. 300.0)
+        target_indices (list): 需要提取的列索引列表 (e.g. [1, 5, 9])
+        
+    Returns:
+        dict: { "1": val_xx, "5": val_yy, ... } 如果找不到返回 None
+    """
+    if not os.path.exists(filepath):
+        return None
+    
+    try:
+        # 使用 numpy 读取，即使数据有些许格式差异也能处理
+        data = np.loadtxt(filepath)
+        
+        # 处理只有一行数据的情况 (变成 2D 数组)
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+            
+        # 遍历每一行寻找对应的温度
+        for row in data:
+            T = row[0]
+            # 允许 0.1K 的温度误差，防止浮点数精度问题
+            if abs(T - target_temp) < 0.1:
+                # 找到对应温度行，提取所有指定列的数据
+                values = {}
+                for idx in target_indices:
+                    # 确保索引不越界 (ShengBTE 输出通常有 10 列: T + 9个张量分量)
+                    if idx < len(row):
+                        values[str(idx)] = float(row[idx])
+                return values
+                
+    except Exception as e:
+        print(f"Warning: Error reading {filepath}: {e}")
+        return None
+    
+    return None
+
+def run_collection(config):
+    """
+    收集结果主逻辑
+    Args:
+        config (dict): 从 INPUT 文件解析出的 &collect 字典
+    """
+    print("--- Starting Results Collection ---")
+    
+    # 1. 读取配置
+    temp = float(config.get('TEMPERATURE', 300.0))
+    target_filename = config.get('TARGET_FILE', 'BTE.KappaTensorVsT_CONV')
+    output_json_name = config.get('OUTPUT_JSON', 'kappa_summary.json')
+    
+    # 解析索引字符串 "1, 5, 9" -> [1, 5, 9]
+    kappa_str = str(config.get('TARGET_KAPPA', '1'))
+    try:
+        target_indices = [int(x.strip()) for x in kappa_str.split(',') if x.strip()]
+    except ValueError:
+        print("Error: Invalid format for TARGET_KAPPA. Use format like '1, 5, 9'")
+        return
+
+    # 路径配置
+    # 假设任务都在 ShengBTE/ 子目录下 (根据 submit 阶段的逻辑)
+    # 如果 INPUT 里没有配 WORK_DIR，默认去 ShengBTE 找
+    work_dir = config.get('WORK_DIR', 'ShengBTE')
+    # 结果要保存到的根目录
+    root_dir = config.get('ROOT_DIR', '.')
+
+    # 2. 扫描任务文件夹
+    # 匹配模式: task_333_-2
+    pattern = re.compile(r"task_(\d{3})_(-?\d+)")
+    search_path = os.path.join(work_dir, "task_*")
+    task_folders = sorted(glob.glob(search_path))
+    
+    print(f"Scanning {len(task_folders)} task folders in '{work_dir}' for Temp={temp}K...")
+    
+    # 数据结构: results[超胞尺寸][截断距离] = { "1": val, "5": val }
+    results = defaultdict(dict)
+    
+    for folder in task_folders:
+        folder_name = os.path.basename(folder)
+        match = pattern.match(folder_name)
+        if not match: continue
+        
+        sc_raw = match.group(1)       # "333"
+        cutoff = int(match.group(2))  # -2 (int)
+        
+        # 格式化超胞名字: "333" -> "3x3x3" (为了画图图例好看)
+        sc_label = f"{sc_raw[0]}x{sc_raw[1]}x{sc_raw[2]}"
+        
+        target_file_path = os.path.join(folder, target_filename)
+        
+        # 提取数据
+        vals = get_kappa_vector(target_file_path, temp, target_indices)
+        
+        if vals:
+            results[sc_label][cutoff] = vals
+        else:
+            # 只有当文件存在但数据不对时才警告，避免刷屏
+            if os.path.exists(target_file_path):
+                print(f"  [WARN] Data missing for {folder_name}")
+
+    # === 3. 打印漂亮表格到终端 ===
+    # 动态生成表头: Cutoff | K_1 | K_5 ...
+    headers = ["Cutoff"] + [f"K_{i}" for i in target_indices]
+    header_fmt = "{:<10} " + " ".join([f"{{:<12}}" for _ in target_indices])
+    
+    sorted_sc = sorted(results.keys())
+    for sc in sorted_sc:
+        print(f"\nGrid: {sc}")
+        print(header_fmt.format(*headers))
+        print("-" * (10 + 13 * len(target_indices)))
+        
+        # 按截断距离绝对值排序 (-2, -3, -4...)
+        cutoffs = sorted(results[sc].keys(), key=lambda x: abs(x))
+        
+        for cut in cutoffs:
+            row_vals = results[sc][cut]
+            # 提取每一列的值，如果没有则显示 N/A
+            cols = [cut] + [f"{row_vals.get(str(i), 0.0):.4e}" for i in target_indices]
+            print(header_fmt.format(*cols))
+
+    # === 4. 保存 JSON 到根目录 ===
+    output_path = os.path.join(root_dir, output_json_name)
+    try:
+        with open(output_path, 'w') as f:
+            json.dump(results, f, indent=4)
+        print(f"\n[Success] Summary saved to: {os.path.abspath(output_path)}")
+    except IOError as e:
+        print(f"\n[Error] Failed to save JSON: {e}")
+
+# 用于独立测试
+if __name__ == "__main__":
+    # 模拟一个配置进行测试
+    mock_config = {
+        'TEMPERATURE': 300.0,
+        'TARGET_KAPPA': "1, 5, 9",
+        'WORK_DIR': 'ShengBTE',
+        'ROOT_DIR': '.'
+    }
+    # 确保当前有环境才能跑，否则会报错
+    if os.path.exists("ShengBTE"):
+        run_collection(mock_config)
+    else:
+        print("Please run this via convergence.py or ensure 'ShengBTE' directory exists.")
+
+
+
+
+############################################
+#绘图
+############################################
+import os
+import json
+import matplotlib.pyplot as plt
+import numpy as np
+from collections import defaultdict
+
+# ================= PRB Style Configuration =================
+plt.rcParams.update({
+    'font.family': 'serif', 
+    'font.serif': ['Times New Roman'],
+    'mathtext.fontset': 'stix', 
+    'axes.unicode_minus': True,
+    'xtick.direction': 'in', 
+    'ytick.direction': 'in',
+    'xtick.top': True, 
+    'ytick.right': True,
+    'font.size': 12,
+    'axes.labelsize': 14,
+    'legend.fontsize': 10,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
+    'lines.linewidth': 1.5,
+    'lines.markersize': 6
+})
+
+# 颜色和标记循环，用于区分不同的 Grid (3x3x3, 4x4x4...)
+COLORS = ['#1f77b4', '#d62728', '#2ca02c', '#ff7f0e', '#9467bd']
+MARKERS = ['o', 's', '^', 'D', 'v']
+
+def load_data(json_path):
+    if not os.path.exists(json_path):
+        print(f"Error: JSON file '{json_path}' not found.")
+        return None
+    with open(json_path, 'r') as f:
+        return json.load(f)
+
+def plot_convergence(config):
+    print("--- Starting Plotting ---")
+    
+    # 1. 读取配置
+    root_dir = config.get('ROOT_DIR', '.')
+    json_name = config.get('OUTPUT_JSON', 'kappa_summary.json')
+    json_path = os.path.join(root_dir, json_name)
+    
+    data = load_data(json_path)
+    if not data: return
+
+    # 2. 数据重组
+    # 结构: organized_data[temp][k_idx][grid] = (cutoffs, values)
+    organized_data = defaultdict(lambda: defaultdict(dict))
+    
+    # 收集所有的 Grid, Cutoff, Temp, K_indices
+    all_grids = sorted(data.keys()) # ["3x3x3", "4x4x4"]
+    all_temps = set()
+    all_k_indices = set()
+
+    for grid in data:
+        for cutoff in data[grid]:
+            for temp in data[grid][cutoff]:
+                all_temps.add(temp)
+                for k_idx in data[grid][cutoff][temp]:
+                    all_k_indices.add(k_idx)
+    
+    # 排序
+    sorted_temps = sorted(list(all_temps), key=lambda x: float(x))
+    sorted_k_indices = sorted(list(all_k_indices), key=lambda x: int(x))
+    
+    # 填充 organized_data
+    for temp in sorted_temps:
+        for k_idx in sorted_k_indices:
+            for grid in all_grids:
+                cutoffs = []
+                values = []
+                
+                # 获取该 grid 下所有的 cutoff 并排序 (按绝对值 2, 3, 4...)
+                raw_cutoffs = sorted(data[grid].keys(), key=lambda x: abs(int(x)))
+                
+                for cut in raw_cutoffs:
+                    # 检查是否有数据
+                    if temp in data[grid][cut] and k_idx in data[grid][cut][temp]:
+                        val = data[grid][cut][temp][k_idx]
+                        cutoffs.append(abs(int(cut))) # X轴取绝对值
+                        values.append(val)
+                
+                if cutoffs:
+                    organized_data[temp][k_idx][grid] = (cutoffs, values)
+
+    # 3. 开始绘图 (每个温度一张图)
+    for temp in sorted_temps:
+        n_subplots = len(sorted_k_indices)
+        
+        # 动态调整画布大小: 如果有多个方向，横向排列
+        fig, axes = plt.subplots(1, n_subplots, figsize=(4 * n_subplots, 3.5), squeeze=False)
+        axes = axes.flatten() # 展平方便索引
+        
+        print(f"Plotting Temperature: {temp} K")
+        
+        for i, k_idx in enumerate(sorted_k_indices):
+            ax = axes[i]
+            
+            # 遍历不同的 Supercell Grid
+            for j, grid in enumerate(all_grids):
+                if grid in organized_data[temp][k_idx]:
+                    x, y = organized_data[temp][k_idx][grid]
+                    
+                    # 样式循环
+                    color = COLORS[j % len(COLORS)]
+                    marker = MARKERS[j % len(MARKERS)]
+                    
+                    ax.plot(x, y, label=grid, color=color, marker=marker, 
+                            linestyle='-', alpha=0.9)
+            
+            # 坐标轴设置
+            ax.set_xlabel(r'Cutoff Neighbor Index ($N$)')
+            
+            # 只有第一个子图显示 Y 轴标签
+            if i == 0:
+                ax.set_ylabel(r'$\kappa$ (W m$^{-1}$ K$^{-1}$)')
+            
+            # 标题 (指示方向)
+            direction_map = {'1': 'xx', '5': 'yy', '9': 'zz'}
+            dir_label = direction_map.get(k_idx, f"Index {k_idx}")
+            ax.set_title(r'$T = {:.0f}$ K, $\kappa_{{{}}}$'.format(float(temp), dir_label))
+            
+            # 刻度设置 (强制整数刻度)
+            from matplotlib.ticker import MaxNLocator
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+            
+            # 图例 (PRB 风格通常去框，或者放外面)
+            ax.legend(frameon=False, loc='best')
+
+        plt.tight_layout()
+        
+        # 保存图片
+        # 文件名示例: Convergence_300K.png
+        filename = f"Convergence_{float(temp):.0f}K.png"
+        save_path = os.path.join(root_dir, filename)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"  [Saved] {save_path}")
+        plt.close()
+
+if __name__ == "__main__":
+    # Test stub
+    mock_config = {'ROOT_DIR': '.'}
+    if os.path.exists("kappa_summary.json"):
+        plot_convergence(mock_config)
+    else:
+        print("Please run via convergence.py or ensure kappa_summary.json exists.")
+
+
+##########################################
+#总控脚本
+###########################################
+
+#!/usr/bin/env python3
+import argparse
+import sys
+import os
+
+# 引入自定义工具箱 (对应 src/ 下的文件)
+from src.io_utils import ConfigParser
+from src import (
+    generator, 
+    deduplicator, 
+    analyzer, 
+    qe_runner,    # 新增: 提交 DFT
+    fc3_builder,  # 新增: 生成三阶力常数
+    bte_runner,   # 新增: 提交 ShengBTE
+    collector,    # 新增: 收集结果
+    plotter       # 新增: 绘图
+)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Auto-Thirdorder Workflow Controller",
+        usage="python convergence.py [command] [INPUT_FILE]",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    
+    # 定义所有支持的命令
+    commands_help = (
+        "generate    : Generate supercell files (DISP.*)\n"
+        "link        : Deduplicate structures using symlinks\n"
+        "submit_dft  : Submit DFT (Quantum Espresso) jobs\n"
+        "gen_fc3     : Harvest results and generate FORCE_CONSTANTS_3RD\n"
+        "analyze     : Analyze computational savings\n"
+        "run_bte     : Submit ShengBTE calculation tasks\n"
+        "collect     : Collect thermal conductivity results to JSON\n"
+        "plot        : Plot convergence curves (PRB style)\n"
+        "all         : Run specific sequential steps (use with caution)"
+    )
+    
+    parser.add_argument("command", 
+                        choices=['generate', 'link', 'submit_dft', 'gen_fc3', 
+                                 'analyze', 'run_bte', 'collect', 'plot', 'all'], 
+                        help=commands_help)
+    
+    parser.add_argument("control_file", nargs='?', default="INPUT", 
+                        help="Path to configuration file (default: INPUT)")
+    
+    args = parser.parse_args()
+    
+    # 1. 解析配置文件
+    if not os.path.exists(args.control_file):
+        print(f"Error: Configuration file '{args.control_file}' not found.")
+        sys.exit(1)
+        
+    cfg = ConfigParser(args.control_file)
+    
+    # =======================================================
+    # Step 1: Generate Supercells
+    # =======================================================
+    if args.command in ['generate', 'all']:
+        configs = cfg.get('cell', 'configs')
+        base_in = cfg.get('cell', 'base_input')
+        tpl_name = cfg.get('cell', 'template_supercell_name')
+        
+        if configs and base_in:
+            generator.run_generation(configs, base_in, tpl_name)
+
+    # =======================================================
+    # Step 2: Link Duplicates
+    # =======================================================
+    if args.command in ['link', 'all']:
+        configs = cfg.get('cell', 'configs')
+        if configs:
+            deduplicator.run_linking(configs)
+
+    # =======================================================
+    # Step 3: Submit DFT Jobs (Quantum Espresso)
+    # =======================================================
+    if args.command == 'submit_dft':
+        # 读取 &dft 板块
+        dft_cfg = cfg.config.get('dft', {})
+        if not dft_cfg:
+            print("Error: No &dft section found in INPUT.")
+        else:
+            qe_runner.submit_dft_jobs(dft_cfg)
+
+    # =======================================================
+    # Step 4: Generate Force Constants (Reap)
+    # =======================================================
+    if args.command == 'gen_fc3':
+        configs = cfg.get('cell', 'configs')
+        base_in = cfg.get('cell', 'base_input')
+        
+        if configs and base_in:
+            fc3_builder.run_reaping(configs, base_in)
+
+    # =======================================================
+    # Optional: Analyze Savings
+    # =======================================================
+    if args.command == 'analyze':
+        costs = cfg.get('analyze', 'COST_ESTIMATES')
+        if costs:
+            analyzer.run_analysis(costs)
+
+    # =======================================================
+    # Step 5: Run ShengBTE
+    # =======================================================
+    if args.command == 'run_bte':
+        # 读取 &submit 板块
+        submit_cfg = cfg.config.get('submit', {})
+        if not submit_cfg:
+            print("Error: No &submit section found in INPUT.")
+        else:
+            bte_runner.submit_jobs(submit_cfg)
+
+    # =======================================================
+    # Step 6: Collect Results
+    # =======================================================
+    if args.command in ['collect', 'all']:
+        # 读取 &collect 板块
+        collect_cfg = cfg.config.get('collect', {})
+        
+        # 智能补全: 如果 collect 里没写目录，尝试从 submit 里继承
+        if 'ROOT_DIR' not in collect_cfg:
+            collect_cfg['ROOT_DIR'] = cfg.get('submit', 'ROOT_DIR', '.')
+        if 'WORK_DIR' not in collect_cfg:
+            collect_cfg['WORK_DIR'] = cfg.get('submit', 'WORK_DIR', 'ShengBTE')
+            
+        collector.run_collection(collect_cfg)
+
+    # =======================================================
+    # Step 7: Plot Results
+    # =======================================================
+    if args.command in ['plot', 'all']:
+        # 绘图复用 collect 的配置（因为都需要读 JSON）
+        plot_cfg = cfg.config.get('collect', {})
+        
+        # 确保 ROOT_DIR 存在
+        if 'ROOT_DIR' not in plot_cfg:
+            plot_cfg['ROOT_DIR'] = cfg.get('submit', 'ROOT_DIR', '.')
+            
+        plotter.plot_convergence(plot_cfg)
+
+if __name__ == "__main__":
+    main()
