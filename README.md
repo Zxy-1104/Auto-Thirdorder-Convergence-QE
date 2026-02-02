@@ -49,6 +49,10 @@ To run the workflow conveniently from any directory, we recommend setting up an 
 Ensure your **current working directory** contains:
 * `INPUT`, `CONTROL`, `espresso.ifc2`, `pseudo/`, `*_unit.scf.in`, `*_supper.scf.in`.
 
+> **⚠️ IMPORTANT:**
+> Before running, you **MUST** open the `INPUT` file and modify the `THIRDORDER_BIN` variable in the `&cell` section.
+> Change it to the **absolute path** of the `thirdorder_espresso.py` script on your system (e.g., `/public/home/user/soft/thirdorder/thirdorder_espresso.py`).
+> 
 ## ⚡ 2. Step-by-Step Workflow
 
 If you prefer to run the workflow stage by stage:
