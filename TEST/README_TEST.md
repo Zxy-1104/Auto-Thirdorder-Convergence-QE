@@ -1,4 +1,3 @@
-```markdown
 # 🧪 Test Case: Graphene (Convergence Test)
 
 This folder contains a complete test dataset for **Graphene**. This case is merely a simple run test.
