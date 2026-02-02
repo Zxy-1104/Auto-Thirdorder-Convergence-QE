@@ -1,9 +1,3 @@
-Here is the translated and formatted content, optimized for a **GitHub README.md**. I have added syntax highlighting, icons, and a clear structure to make it look professional.
-
-You can copy the code block below directly into your `README.md`.
-
----
-
 # 🚀 Usage Guide
 
 ## 📂 1. Preparation (Prerequisites)
