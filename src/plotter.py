@@ -40,6 +40,11 @@ def plot_convergence(config):
     root_dir = config.get('ROOT_DIR', '.')
     json_name = config.get('OUTPUT_JSON', 'kappa_summary.json')
     json_path = os.path.join(root_dir, json_name)
+
+    save_dir = os.path.join(root_dir, "QE_picture")
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        print(f"Created directory: {save_dir}")
     
     data = load_data(json_path)
     if not data: return
@@ -113,7 +118,7 @@ def plot_convergence(config):
         plt.tight_layout()
         
         filename = f"Convergence_{float(temp):.0f}K.png"
-        save_path = os.path.join(root_dir, filename)
+        save_path = os.path.join(save_dir, filename)
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"  [Saved] {save_path}")
         plt.close()
