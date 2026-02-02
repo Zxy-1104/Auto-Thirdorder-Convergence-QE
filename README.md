@@ -1,3 +1,16 @@
+# Auto-Thirdorder-Convergence-QE
+**Automated Workflow for Lattice Thermal Conductivity Convergence (QE & ShengBTE)**
+
+**Auto-Thirdorder-Convergence-QE** is a Python-based automation tool designed to streamline *ab initio* phonon calculations. It specifically targets the tedious process of **convergence testing** for **Supercell Sizes** and **Interaction Cutoffs** in lattice thermal conductivity calculations.
+
+By orchestrating the entire pipeline—from structure generation and DFT submission to 3rd-order force constant extraction and ShengBTE analysis—this tool frees researchers from repetitive manual tasks.
+
+#### 🌟 Key Features
+* 🤖 **End-to-End Automation**: One-click `auto` mode handles everything from Phase 1 (Generation) to Phase 5 (Plotting) without manual intervention.
+* ⚡ **Smart Deduplication**: Automatically identifies identical atomic structures across different cutoff configurations and uses symlinks to **avoid redundant DFT calculations**, significantly saving computational resources.
+* 📊 **Auto-Visualization**: Automatically parses output data and generates figures upon completion.
+* 🚀 **HPC Friendly**: Native support for the SLURM scheduler, utilizing Job Arrays for efficient massive parallelization, with support for checkpoint restart and smart path resolution.
+
 # 🚀 Usage Guide
 
 ## ⚙️ 0. Setup (One-Time Configuration)
