@@ -18,7 +18,6 @@ SUB_SCRIPT = "templates/sub_calc.sh"
 COST_ESTIMATES = {
     "331": 0.16,
     "441": 0.32,
-    "551": 0.64,
 }
 
 &submit
@@ -35,4 +34,5 @@ TARGET_FILE = "BTE.KappaTensorVsT_CONV"
 TARGET_KAPPA = "1, 5, 9"
 OUTPUT_JSON = "kappa_summary.json"
 ROOT_DIR = "."
+
 WORK_DIR = "ShengBTE"
