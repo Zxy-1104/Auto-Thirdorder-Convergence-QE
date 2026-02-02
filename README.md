@@ -29,7 +29,16 @@ To run the workflow conveniently from any directory, we recommend setting up an 
     ```bash
     source ~/.bashrc
     ```
-**Note:** Before running any calculation, go to the **source code installation directory** and configure the submission scripts in `templates/` to match your cluster environment (Partition, Queue, Module load, etc.).
+    
+> **Alternative (If Alias Fails):**
+> If you encounter issues setting up the alias or prefer not to use it, you can simply run the script using its absolute path:
+> ```bash
+> python /path/to/your/Auto-Thirdorder-Convergence-QE/convergence.py [command]
+> ```
+
+---
+
+**⚠️ Important Note:** Before running any calculation, you **MUST** go to the **source code installation directory** and configure the submission scripts in `templates/` to match your cluster environment (Partition, Queue, Module load, etc.).
 
 * `templates/sub_calc.sh`
 * `templates/sub_gen.sh`
