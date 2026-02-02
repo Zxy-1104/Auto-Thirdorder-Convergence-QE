@@ -10,7 +10,7 @@ To run the workflow conveniently from any directory, we recommend setting up an 
     ```
 2.  Add the following line (replace `/path/to/...` with the actual location where you downloaded this code):
     ```bash
-    alias auto-3rd="python /path/to/your/Auto-Thirdorder-Workflow/convergence.py"
+    alias auto-3rd="python /path/to/your/Auto-Thirdorder-Convergence-QE/convergence.py"
     ```
 3.  Apply the changes:
     ```bash
@@ -121,9 +121,5 @@ scancel <JOBID>
 
 # OR Cancel ALL jobs belonging to you (Use with caution!)
 scancel -u <your_username>
-
-```
-
-```
 
 ```
