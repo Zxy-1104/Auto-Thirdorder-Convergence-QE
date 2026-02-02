@@ -96,3 +96,34 @@ Monitor the progress:
 tail -f auto.log
 
 ```
+
+If you need to stop the workflow halfway:
+
+1. **Kill the Python Script (The Controller):**
+
+```bash
+# Find the PID (Process ID)
+ps -ef | grep convergence.py
+
+# Kill the process (Replace <PID> with the actual number found above)
+kill -9 <PID>
+
+```
+
+2. **Cancel Cluster Jobs (The Calculations):**
+
+```bash
+# Check your running jobs
+squeue -u <your_username>
+
+# Cancel specific jobs
+scancel <JOBID>
+
+# OR Cancel ALL jobs belonging to you (Use with caution!)
+scancel -u <your_username>
+
+```
+
+```
+
+```
