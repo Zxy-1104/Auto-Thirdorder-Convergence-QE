@@ -1,42 +1,38 @@
 ```markdown
-# 🧪 Test Case: Graphene (Real Convergence Test)
+# 🧪 Test Case: Graphene (Convergence Test)
 
-This folder contains a complete dataset for **Graphene** (2D material).
-
-Due to the relatively low computational cost of 2D materials, this dataset acts as a **convergence test**. It simulates the exact procedure used in scientific research to analyze how thermal conductivity converges with supercell size and cutoff radius.
+This folder contains a complete test dataset for **Graphene**. This case is merely a simple run test.
 
 ## 📋 Contents
 
-* **Configuration (`INPUT`)**: A realistic configuration file containing 5 specific convergence setups.
-* **Pre-calculated Inputs**: `espresso.ifc2` (2nd-order FC) and `pseudo/` (Pseudopotentials).
-* **Structure Files**: Unit cell and Supercell templates for Graphene.
+* **Configuration File (`INPUT`)**: Contains 5 convergence test schemes (3x3x1 and 4x4x1 supercells, with different cutoff radii).
+* **Pre-calculated Files**: `espresso.ifc2` (2nd-order force constants) and `pseudo/` (pseudopotentials).
+* **Structure Files**: Graphene unit cell and supercell templates, and the ShengBTE control file CONTROL.
 
 ## 🚀 How to Run the Test
 
-### 1. Prerequisite
-Ensure that the submission scripts in the **project root directory** (`templates/*.sh`) are correctly configured with your cluster's settings.
-*(Note: You do NOT need to copy templates here. The software will automatically find them in the installation directory.)*
+### 1. Preparation
+Please ensure that the `templates/` scripts (`sub_calc.sh`, etc.) in the project **root directory** have been configured according to your cluster environment.
 
 ### 2. Enter Test Directory
-Navigate into this `TEST` folder:
+Enter this `TEST` folder in the terminal:
 
 ```bash
 cd TEST
 
 ```
 
-### 3. Execute Workflow
+### 3. Run Workflow
 
-Run the main script from the parent directory. The script will use the `INPUT` file in the current directory while loading `src` and `templates` from the installation path.
+You can call the main program from the parent directory or use the absolute path. The program will automatically recognize the `INPUT` file in the current directory and automatically call the `src` library and `templates` scripts from the installation directory.
 
 #### 🔹 Option A: One-Click Automation (Recommended)
 
 ```bash
-# Run the script located in the parent directory
+# Call convergence.py from the parent directory
 python ../convergence.py auto
 
-# OR, if you have set up an alias:
-# auto-3rd auto
+# You can also add it to your environment variables
 
 ```
 
@@ -44,21 +40,26 @@ python ../convergence.py auto
 
 ```bash
 python ../convergence.py generate    # Generate files
+python ../convergence.py link        # Link files
+python ../convergence.py analyze     # Analyze savings
 python ../convergence.py submit_dft  # Submit DFT jobs
-# ... (Wait for jobs to finish) ...
-python ../convergence.py gen_fc3     # Generate FC3
-python ../convergence.py run_bte     # Run ShengBTE
-python ../convergence.py collect     # Collect results
-python ../convergence.py plot        # Plot convergence
+# ... (Wait for jobs to finish)
+python ../convergence.py gen_fc3     # Generate 3rd-order force constants
+python ../convergence.py run_bte     # Calculate thermal conductivity
+# ... (Wait for jobs to finish)
+python ../convergence.py collect     # Collect data
+python ../convergence.py plot        # Plotting
 
 ```
 
 ### 4. Verify Results
 
-After completion, check the current directory for:
+After completion, please check if the following content has been generated in the current directory:
 
-* **Folders**: 5 calculation directories (e.g., `thirdorder_331_-2`).
+* **Folders**: 5 calculation directories (e.g., `thirdorder_331_-2`, etc.).
 * **Data**: `kappa_summary.json`.
-* **Plots**: Convergence plots in the `QE_picture/` folder.
+* **Images**: Convergence curve plots in the `QE_picture/` folder.
+
+```
 
 ```
