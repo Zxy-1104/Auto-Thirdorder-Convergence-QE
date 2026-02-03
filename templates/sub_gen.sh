@@ -1,20 +1,23 @@
 #!/bin/bash
-#SBATCH -p v6_384 # Partition name (Modify according to your cluster)
+#SBATCH -p <PARTITION_NAME>    # <--- [USER] Change to your cluster partition
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH -J Gen_FC3     # <--- [KEY] Job name used by 'automator.py' to monitor status
-#SBATCH -o reap.out    # <--- [KEY] File containing the termination criterion
+#SBATCH -J Gen_FC3             # <--- [SYSTEM] DO NOT CHANGE. Used by automator for queue monitoring.
+#SBATCH -o reap.out            # <--- [SYSTEM] DO NOT CHANGE. Used by automator to verify 'Success'.
 
 # ================= User Configuration =================
 # [1] Environment Setup
-source /public1/soft/modules/module.sh
+# <--- [USER] Load your Python environment below
+source /etc/profile.d/modules.sh
 module purge
-# Load environment containing 'numpy'
-module load python/3.8.6  # <--- Please modify according to your specific environment
+module load python/3.8         # <--- [USER] Ensure this environment has numpy installed
 
-# [2] The path to 'thirdorder_espresso.py' is defined in the 'INPUT' file 
-#     under the &cell section (THIRDORDER_BIN variable).
+# [2] Note on 'thirdorder_espresso.py'
+# The path to the executable is defined in the 'INPUT' file under &cell -> THIRDORDER_BIN.
+# You do NOT need to set it here.
 # ======================================================
+# ... (Rest of the script logic remains unchanged) ...
+
 echo "=== FC3 Generation Job Start ==="
 echo "Node: $(hostname)"
 echo "Work Dir: $(pwd)"
