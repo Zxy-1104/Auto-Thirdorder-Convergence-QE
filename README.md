@@ -101,8 +101,15 @@ Ensure your **working directory** contains:
 **[Important]** Use **Absolute Paths** for scripts in the `INPUT` file to ensure they work from any directory:
 
 ```python
+&cell
 THIRDORDER_BIN = "/path/to/anaconda3/bin/thirdorder_espresso.py"
 SUB_GEN_SCRIPT = "/path/to/Auto-Thirdorder-Convergence-QE/templates/sub_gen.sh"
+
+&dft
+SUB_SCRIPT = "/path/to/Auto-Thirdorder-Convergence-QE/templates/sub_calc.sh"
+
+&submit
+SUB_SCRIPT = "/path/to/Auto-Thirdorder-Convergence-QE/templates/sub_sheng.sh"
 ...
 
 ```
