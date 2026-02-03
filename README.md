@@ -49,8 +49,13 @@ Before using, ensure the following are installed and accessible on your cluster:
 
 ## ⚙️ 0. Setup (One-Time Configuration)
 
-To run the workflow conveniently from any directory, setting up an **alias** is recommended.
+**1. Grant Execution Permissions**
+First, ensure the main script and templates have execution permissions:
+```bash
+chmod +x convergence.py templates/*.sh
+```
 
+**2. To run the workflow conveniently from any directory, setting up an **alias** is recommended:**
 1. Open your shell configuration file (usually `~/.bashrc`):
 ```bash
 vim ~/.bashrc
