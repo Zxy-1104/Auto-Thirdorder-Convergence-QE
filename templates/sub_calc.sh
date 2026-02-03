@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -p v6_384 # Partition name (Modify according to your cluster)
+#SBATCH -p * # Partition name (Modify according to your cluster)
 #SBATCH -N 1
 #SBATCH -n 96
 #SBATCH --array=1-2    # <--- [KEY] Number of parallel jobs (nodes) for this task
@@ -14,7 +14,7 @@ MY_NPROC=96     # Total number of cores per node
 MY_NPOOL=4      # Quantum Espresso 'npool' parameter
 
 # [3] Environment Setup
-source /public1/soft/modules/module.sh
+source path/to/your/module.sh
 module purge
 module load qe/6.7.0-oneAPI.2022.1
 # ======================================================
