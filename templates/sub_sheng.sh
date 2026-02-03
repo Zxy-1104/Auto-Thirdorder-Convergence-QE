@@ -1,27 +1,29 @@
 #!/bin/bash
-#SBATCH -p v6_384 # Partition name (Modify according to your cluster)
+#SBATCH -p <PARTITION_NAME>    # <--- [USER] Change to your cluster partition
 #SBATCH -N 1
-#SBATCH -n 96
-#SBATCH -J shengBTE    # <--- [KEY] Job name used by 'automator.py' to monitor status
-#SBATCH -o shengbte.out    # <--- [KEY] File containing the termination criterion
+#SBATCH -n 96                  # <--- [USER] Change to cores per node
+#SBATCH -J shengBTE            # <--- [SYSTEM] DO NOT CHANGE. Used by automator for queue monitoring.
+#SBATCH -o shengbte.out        # <--- [SYSTEM] DO NOT CHANGE. Used by automator to verify 'Job Done'.
 
 # ================= User Configuration =================
 # [1] Computational Resources
-MY_NPROC=96  # Number of cores (MUST match #SBATCH -n)
+MY_NPROC=96  # <--- [USER] MUST match #SBATCH -n above
 
-# [2] Software Paths (Please modify to your actual paths)
-# Path to Spglib library (ShengBTE dependency)
-SPGLIB_LIB_DIR="$HOME/soft/spglib-1.9.9/lib"
+# [2] Software Paths
+# <--- [USER] Set the absolute path to your Spglib library (ShengBTE dependency)
+SPGLIB_LIB_DIR="/path/to/your/spglib/lib"
 
-# Path to ShengBTE executable
-SHENGBTE_EXE="$HOME/soft/sousaw-shengbte-b0d209068239/ShengBTE"
+# <--- [USER] Set the absolute path to your ShengBTE executable
+SHENGBTE_EXE="/path/to/your/ShengBTE"
 
 # [3] Environment Setup
-source /public1/soft/modules/module.sh
+# <--- [USER] Load your MPI/Compiler environment below
+source /etc/profile.d/modules.sh
 module purge
-# Load MPI environment (Required by ShengBTE)
-module load qe/6.7.0-oneAPI.2022.1 
+module load qe/6.7.0           # <--- [USER] Load MPI environment required by ShengBTE
 # ======================================================
+# ... (Rest of the script logic remains unchanged) ...
+
 echo "=== Job Started at $(date) ==="
 echo "Work Dir: $(pwd)"
 
