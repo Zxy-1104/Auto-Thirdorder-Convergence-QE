@@ -1,0 +1,131 @@
+=========================================================================
+      Auto-Thirdorder-Convergence-QE Comprehensive Run Guide
+=========================================================================
+Author: Xingyu
+Email address: zhaoxingyu@hnu.edu.cn
+Version: v1.0.0
+Target Audience: First-principles researchers (Phonon & Thermal Conductivity)
+
+-------------------------------------------------------------------------
+1. Philosophy & Significance
+-------------------------------------------------------------------------
+
+In the calculation of Lattice Thermal Conductivity (κ), the biggest headache is often not the calculation itself, but the "convergence verification" of the results.
+
+To obtain reliable physical results, we need to answer two questions:
+1. Is the Supercell large enough? (e.g., 3x3x3 vs 4x4x4)
+2. Is the interaction Cutoff radius long enough? (e.g., 3rd nearest neighbor vs 5th nearest neighbor)
+
+The traditional approach involves manually creating dozens of folders and calculating them individually. This is not only tedious and error-prone but also results in massive computational waste—because different cutoff configurations often share a large number of displaced atomic structures.
+
+The core significance of this tool (Auto-Thirdorder-Convergence-QE) lies in:
+
+1. **Automation**: It streamlines structure generation, calculation, post-processing, and plotting into a single pipeline, liberating human effort.
+2. **Deduplication**: It intelligently identifies identical structures across different configurations. For example, certain displacement structures required for the "3rd nearest neighbor" might also be needed for the "5th nearest neighbor." This tool automatically creates symbolic links (symlinks) to avoid repeated DFT calculations, saving up to 30%-50% of core hours.
+3. **Standardization**: It ensures consistency in all calculation processes and outputs standardized convergence curves comparable to PRB (Physical Review B) quality.
+
+-------------------------------------------------------------------------
+2. Workflow Mechanism
+-------------------------------------------------------------------------
+
+The program divides the workflow into 5 phases:
+
+[Phase 1] Pre-processing & Deduplication
+   - Reads the `configs` list from the INPUT file.
+   - Calls `thirdorder_espresso.py` to generate all DISP files.
+   - [KEY] Runs the Deduplicator algorithm to scan all generated structure files. If a duplicate structure is found, it directly creates a Symlink pointing to the existing file.
+
+[Phase 2] DFT Calculation
+   - Uses SLURM Job Arrays to batch submit calculation tasks.
+   - The program automatically monitors the queue status until all SCF calculations are complete.
+   - [Update] It performs an I/O sync check to ensure all output files are visible on the disk.
+
+[Phase 3] Force Constants Extraction
+   - Automatically checks the integrity of DFT calculations (verifies XML/output files).
+   - Calls the `thirdorder_espresso.py reap` function to generate `FORCE_CONSTANTS_3RD`.
+   - [KEY] Verifies success by checking the `reap.out` log for "Success".
+
+[Phase 4] Thermal Conductivity Calculation (ShengBTE)
+   - Automatically creates the ShengBTE working directory.
+   - Distributes the CONTROL file, 2nd-order FCs, and 3rd-order FCs to the corresponding folders.
+   - Submits parallel ShengBTE tasks.
+   - [KEY] Verifies success by checking the `shengbte.out` log for "Job Done".
+
+[Phase 5] Result Collection & Plotting
+   - Parses the `BTE.KappaTensorVsT_CONV` file.
+   - Extracts thermal conductivity tensor components at specified temperatures.
+   - Plots convergence trends and saves them to the `QE_picture/` folder.
+
+-------------------------------------------------------------------------
+3. Setup Best Practices
+-------------------------------------------------------------------------
+
+A. Smart Path Resolution
+   This software has built-in path resolution capabilities. It is recommended to install the code in a fixed location (e.g., `~/soft/Auto-Thirdorder`) and then call it from any data directory.
+
+B. Alias Recommendation
+   For convenience, it is strongly recommended to add an alias to your `~/.bashrc`:
+   `alias auto-3rd="python /absolute/path/to/your/convergence.py"`
+   This way, you can run the tool in any directory by simply typing `auto-3rd auto`.
+
+C. Template Configuration (Crucial!)
+   Before the first use, you must modify the three `.sh` scripts in the `templates/` directory:
+   - Ensure `#SBATCH -p` (partition) and `-q` (queue) match your cluster requirements.
+   - Ensure `module load` loads the correct Python3 and Quantum Espresso environment.
+   - [WARNING] DO NOT change the output filenames `#SBATCH -o reap.out` and `#SBATCH -o shengbte.out`. The automation logic relies on these specific filenames to verify job success.
+
+-------------------------------------------------------------------------
+4. INPUT File Guide
+-------------------------------------------------------------------------
+
+The INPUT file controls everything. Here are the physical meanings of key parameters:
+
+&cell
+   configs = [ (3,3,1, -3), (4,4,1, -4) ]
+   # Format: (Na, Nb, Nc, Cutoff)
+   # When Cutoff is negative (e.g., -3), it represents the "3rd nearest neighbor". This is recommended.
+   
+   SUB_GEN_SCRIPT = "/abs/path/to/templates/sub_gen.sh"
+   # [Tip] Use ABSOLUTE PATHS for scripts to ensure the code works from any directory.
+
+&analyze
+   COST_ESTIMATES = { "331": 0.2, "441": 1.5 }
+   # Optional: Estimated core-hours per job. Used to calculate computational savings.
+
+&submit
+   TARGET_RESULT = "BTE.KappaTensorVsT_CONV"
+   # The "finish line" for automation. Change to "BTE.KappaTensorVsT_RTA" if needed.
+
+&collect
+   TARGET_KAPPA = "1, 5, 9"
+   # Corresponds to xx(1), yy(5), zz(9) components of the thermal conductivity tensor.
+
+-------------------------------------------------------------------------
+5. Troubleshooting
+-------------------------------------------------------------------------
+
+Q1: "Template not found" or "Script not found" error?
+A1: This usually happens if you used relative paths (e.g., `../templates`) but ran the code from a different depth.
+    -> Solution: Use Absolute Paths (e.g., `/home/user/soft/Auto.../templates/...`) in your INPUT file.
+
+Q2: Error or Crash during the ShengBTE phase?
+A2: 
+    1. Check if `ngrid` (Q-grid) in the CONTROL file is set reasonably.
+    2. Check if `espresso.ifc2` matches the unit cell.
+    3. Check `shengbte.out` or `slurm-*.out` in the `ShengBTE/task_xxx/` folder for error messages (e.g., missing libraries).
+
+Q3: No computational savings during the Deduplication (Link) phase?
+A3: Deduplication works best for "Same Supercell, Different Cutoff" cases. If supercell sizes are different, no structures will match.
+
+Q4: The automation process seems stuck?
+A4: The code waits for queue completion AND log verification.
+    1. Check `squeue` to see if jobs are running.
+    2. If queue is empty, check `reap.out` or `shengbte.out` for "Success" or "Job Done". If the job crashed without writing these keywords, the automation will report a Critical Error.
+
+-------------------------------------------------------------------------
+6. Conclusion
+-------------------------------------------------------------------------
+This tool aims to liberate researchers from repetitive scripting and file management, allowing them to focus on analyzing physical images.
+If you find any bugs or have suggestions for improvement, please submit an Issue.
+
+Happy computing, and may your results converge quickly!

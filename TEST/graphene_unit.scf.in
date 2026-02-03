@@ -1,0 +1,33 @@
+&CONTROL
+calculation = 'scf'
+pseudo_dir = '../pseudo'
+outdir = './outdir'
+prefix = 'graphene'
+etot_conv_thr = 1.0D-6
+forc_conv_thr = 1.0D-6
+tstress = .true.
+tprnfor = .true.
+/
+&SYSTEM
+ibrav = 4
+celldm(1) = 4.65917774
+celldm(3) = 8
+nat = 2
+ntyp = 1
+occupations = 'smearing'
+smearing = 'mv'
+degauss = 0.02
+ecutwfc = 50
+ecutrho = 400
+/
+&ELECTRONS
+mixing_beta = 0.7
+conv_thr = 1.0D-10
+/
+ATOMIC_SPECIES
+C 12.0107 C.pbe-n-rrkjus_psl.1.0.0.UPF
+ATOMIC_POSITIONS (crystal)
+C             0.3333333330        0.6666666660        0.5000000000
+C             0.6666666660        0.3333333330        0.5000000000
+K_POINTS (automatic)
+12 12 1 0 0 0
