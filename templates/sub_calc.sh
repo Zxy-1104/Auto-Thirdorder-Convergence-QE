@@ -1,23 +1,28 @@
 #!/bin/bash
-#SBATCH -p * # Partition name (Modify according to your cluster)
+#SBATCH -p <PARTITION_NAME>    # <--- [USER] Change to your cluster partition (e.g., v6_384)
 #SBATCH -N 1
-#SBATCH -n 96
-#SBATCH --array=1-2    # <--- [KEY] Number of parallel jobs (nodes) for this task
-#SBATCH -J scf_array   # <--- [KEY] Job name used by 'automator.py' to monitor status
+#SBATCH -n 96                  # <--- [USER] Change to cores per node
+#SBATCH --array=1-2            # <--- [USER] Adjust job array size based on your resource limit
+#SBATCH -J scf_array           # <--- [SYSTEM] DO NOT CHANGE. Used by automator for queue monitoring.
 
 # ================= User Configuration =================
 # [1] Parallel Chunks
-NUM_CHUNKS=2    # MUST match the upper limit of '--array' above!
+# NOTE: This number MUST match the upper limit of '--array' above!
+NUM_CHUNKS=2
 
 # [2] Computational Resources
-MY_NPROC=96     # Total number of cores per node
-MY_NPOOL=4      # Quantum Espresso 'npool' parameter
+MY_NPROC=96      # <--- [USER] Total number of cores per node
+MY_NPOOL=4       # <--- [USER] Quantum Espresso 'npool' parameter
 
 # [3] Environment Setup
-source path/to/your/module.sh
+# <--- [USER] Load your specific modules below
+source /etc/profile.d/modules.sh
 module purge
-module load qe/6.7.0-oneAPI.2022.1
+module load qe/6.7.0             # <--- [USER] Modify to your QE module
 # ======================================================
+# ... (Rest of the script logic remains unchanged) ...
+# (Only the header needs to be exposed for configuration)
+
 echo "=== Job Array ID: $SLURM_ARRAY_TASK_ID / $NUM_CHUNKS ==="
 echo "Work Dir: $(pwd)"
 
