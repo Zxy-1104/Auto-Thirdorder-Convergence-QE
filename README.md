@@ -80,16 +80,25 @@ source ~/.bashrc
 
 ---
 
+
+
 ## 📂 1. Preparation
 
 ### A. Configure Templates (Crucial!)
 
-Go to the `templates/` directory and edit the `.sh` files to match your cluster environment:
+Go to the `templates/` directory and edit the three submission scripts (`sub_calc.sh`, `sub_gen.sh`, `sub_sheng.sh`) to match your cluster environment.
 
-* **Modify `#SBATCH**`: Set correct partition, account, and node constraints.
-* **Modify `module load**`: Load your specific Python, MPI, and QE modules.
-* **Check Paths**: Ensure `SHENGBTE_EXE` path in `sub_sheng.sh` is correct.
-* **⚠️ DO NOT MODIFY `#SBATCH -o**`: Keep `#SBATCH -o reap.out` and `#SBATCH -o shengbte.out` **UNCHANGED**. The automation script relies on these specific log filenames to verify job success.
+#### ✅ User Configuration (MUST CHANGE):
+* **Partition & Resources**: Update `#SBATCH -p` (partition), `#SBATCH -n` (cores), and `#SBATCH --array` (for `sub_calc.sh`) to fit your node limits.
+* **Environment Loading**: Update `module load ...` and `source ...` lines to load your specific Python 3.8+, MPI, and Quantum Espresso modules.
+* **Software Paths**: Ensure `SHENGBTE_EXE` and `SPGLIB_LIB_DIR` paths in `sub_sheng.sh` are correct absolute paths.
+
+#### ❌ System Configuration (DO NOT CHANGE):
+* **Job Names**: Keep `#SBATCH -J scf_array`, `#SBATCH -J Gen_FC3`, and `#SBATCH -J shengBTE` **UNCHANGED**.
+* **Output Logs**: Keep `#SBATCH -o reap.out` and `#SBATCH -o shengbte.out` **UNCHANGED**.
+* **Script Logic**: Do not modify the file checking/exit logic at the end of the scripts.
+
+> **Why?** The automation controller (`automator.py`) strictly relies on these specific job names and log filenames to track queue status and verify job success. Changing them will break the auto-wait mechanism.
 
 ### B. Prepare Calculation Directory
 
